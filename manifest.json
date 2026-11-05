@@ -1,0 +1,17 @@
+{
+  "name": "ENEM Turbo",
+  "short_name": "ENEM Turbo",
+  "description": "Estudo intensivo de 2 dias para o ENEM: plano, resumos, quiz e redação.",
+  "lang": "pt-BR",
+  "start_url": "./#plano",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EEF2FF",
+  "theme_color": "#FFB800",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

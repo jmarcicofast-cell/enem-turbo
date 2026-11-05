@@ -6,6 +6,16 @@
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
 <title>ENEM Turbo</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#EEF2FF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14132A" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Estudo intensivo de 2 dias para o ENEM: plano, resumos, quiz e redação.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ENEM Turbo">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Nunito:wght@400;600;700;800&display=swap">
 <style>
@@ -132,7 +142,7 @@ section[data-view]{display:flex;flex-direction:column;gap:16px}
 .fill{padding:18px;display:flex;flex-direction:column;gap:12px}
 .fillgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .fillgrid label{display:flex;flex-direction:column;gap:4px;font-weight:800;font-size:.85rem}
-.fillgrid input{font:inherit;font-weight:600;padding:9px 10px;border:2.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+.fillgrid input{font:inherit;font-size:16px;font-weight:600;padding:9px 10px;border:2.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
 .preview{padding:14px;border-radius:12px;background:var(--soft);font-size:.98rem}
 .preview mark{background:color-mix(in srgb,var(--hum) 55%,transparent);color:inherit;border-radius:4px;padding:0 2px}
 .conect{display:flex;flex-wrap:wrap;gap:8px}
@@ -146,6 +156,42 @@ section[data-view]{display:flex;flex-direction:column;gap:16px}
 canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:50}
 
 @media (max-width:680px){.hero,.two{grid-template-columns:1fr}.count-grid b{font-size:1.5rem}}
+
+/* ---- mobile / app ---- */
+html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
+button,a,label,.opt{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.tabs a .ic{font-size:1.1em}
+.install{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-top:16px;background:var(--hum);color:var(--on-accent)}
+.install p{margin:0;flex:1 1 auto;min-width:0;font-weight:700;font-size:.95rem;line-height:1.3}
+.install .btn{background:var(--card);color:var(--ink);flex:0 0 auto}
+.install .x{background:none;border:0;font-size:1.4rem;font-weight:800;padding:4px 6px;color:var(--on-accent)}
+.sheet-bg{position:fixed;inset:0;z-index:60;background:color-mix(in srgb,var(--ink) 45%,transparent);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:520px;margin:0 12px calc(12px + env(safe-area-inset-bottom,0px));padding:20px;display:flex;flex-direction:column;gap:12px}
+.sheet ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-weight:600}
+.sheet .share{display:inline-grid;place-items:center;width:26px;height:26px;border:2px solid var(--line);border-radius:6px;vertical-align:middle;font-size:.9rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:70;padding:10px 16px;font-weight:800;background:var(--ink);color:var(--bg);border-radius:99px;box-shadow:3px 3px 0 var(--line)}
+@media (max-width:680px){
+  body{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  .hero{padding-top:12px;gap:12px}
+  .hero-main{padding:16px 18px}
+  .hero-main p{display:none}
+  .count{padding:14px}
+  .install p{font-size:.9rem}
+  .tabs{position:fixed;top:auto;bottom:0;left:0;right:0;margin:0;z-index:20;gap:0;justify-content:space-around;
+    padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));
+    background:var(--card);border-top:2.5px solid var(--line);overflow:visible}
+  .tabs a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border:0;box-shadow:none;background:none;border-radius:12px;font-size:.7rem;line-height:1.1;text-align:center}
+  .tabs a .ic{font-size:1.45rem}
+  .tabs a:hover{transform:none}
+  .tabs a[aria-current="page"]{background:var(--soft);color:var(--ink)}
+  section[data-view]{padding-top:18px}
+  .opt{padding:14px;min-height:56px}
+  .task{padding:12px}
+  .btn{padding:11px 16px}
+  .pomo .clock{font-size:2.3rem}
+  .qtext{font-size:1.15rem}
+}
+@media (display-mode:standalone){.install{display:none!important}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -159,7 +205,7 @@ canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:50}
       <h1>ENEM <span>Turbo</span></h1>
       <p>O básico do que mais cai, num plano de dois dias. Marque as tarefas, faça o quiz e treine a redação. Cada acerto vale XP.</p>
     </div>
-    <div class="count sticker" aria-live="polite">
+    <div class="count sticker">
       <div class="eyebrow">Falta para o 1º dia · 08/11, 13h30</div>
       <div class="count-grid">
         <div><b id="cd-d">0</b><small>dias</small></div>
@@ -174,13 +220,33 @@ canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:50}
     </div>
   </header>
 
+  <div class="install sticker" id="install" hidden>
+    <span style="font-size:1.8rem" aria-hidden="true">📲</span>
+    <p>Instale na tela inicial. Funciona até sem internet.</p>
+    <button class="btn" id="install-btn">Instalar</button>
+    <button class="x" id="install-x" aria-label="Fechar aviso">×</button>
+  </div>
+
   <nav class="tabs" aria-label="Seções">
-    <a href="#plano">🗓️ Plano</a>
-    <a href="#resumos">📚 Resumos</a>
-    <a href="#quiz">🎯 Quiz</a>
-    <a href="#redacao">✍️ Redação</a>
-    <a href="#prova">🎒 Dia da prova</a>
+    <a href="#plano"><span class="ic" aria-hidden="true">🗓️</span><span>Plano</span></a>
+    <a href="#resumos"><span class="ic" aria-hidden="true">📚</span><span>Resumos</span></a>
+    <a href="#quiz"><span class="ic" aria-hidden="true">🎯</span><span>Quiz</span></a>
+    <a href="#redacao"><span class="ic" aria-hidden="true">✍️</span><span>Redação</span></a>
+    <a href="#prova"><span class="ic" aria-hidden="true">🎒</span><span>Prova</span></a>
   </nav>
+
+  <div class="sheet-bg" id="ios-sheet" hidden>
+    <div class="sheet sticker" role="dialog" aria-modal="true" aria-labelledby="ios-t">
+      <h3 id="ios-t" style="font-size:1.3rem">Instalar no iPhone</h3>
+      <ol>
+        <li>Abra este link no <b>Safari</b>.</li>
+        <li>Toque em <span class="share" aria-hidden="true">⬆︎</span> <b>Compartilhar</b>, na barra de baixo.</li>
+        <li>Role e toque em <b>Adicionar à Tela de Início</b>.</li>
+        <li>Toque em <b>Adicionar</b>. Pronto, o ícone aparece na tela.</li>
+      </ol>
+      <button class="btn primary" id="ios-ok">Entendi</button>
+    </div>
+  </div>
 
   <!-- PLANO -->
   <section data-view="plano">
@@ -496,7 +562,28 @@ const VIEWS=['plano','resumos','quiz','redacao','prova'];
 function route(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'plano';
  document.querySelectorAll('section[data-view]').forEach(s=>s.hidden=s.dataset.view!==v);
  document.querySelectorAll('.tabs a').forEach(a=>a.getAttribute('href')==='#'+v?a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'))}
-addEventListener('hashchange',route);
+addEventListener('hashchange',()=>{route();const t=document.querySelector('section[data-view]:not([hidden])');
+ if(t&&matchMedia('(max-width:680px)').matches)window.scrollTo({top:Math.max(0,t.getBoundingClientRect().top+scrollY-12)})});
+
+/* ---------- instalar (PWA) ---------- */
+const inst=$('#install'),ua=navigator.userAgent;
+const isIOS=/iphone|ipad|ipod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+let deferred=null;
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
+function showInstall(){if(standalone||store.get('installDismissed',false))return;inst.hidden=false}
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;showInstall()});
+if(isIOS)showInstall();
+if(/android/i.test(ua))setTimeout(showInstall,2500);
+$('#install-btn').onclick=async()=>{
+ if(deferred){deferred.prompt();const r=await deferred.userChoice.catch(()=>null);deferred=null;if(r&&r.outcome==='accepted'){inst.hidden=true;toast('Instalando… 🎉')}}
+ else if(isIOS){$('#ios-sheet').hidden=false;$('#ios-ok').focus()}
+ else toast('Use o menu do navegador ⋮ → "Instalar app"')};
+$('#install-x').onclick=()=>{inst.hidden=true;store.set('installDismissed',true)};
+$('#ios-ok').onclick=()=>{$('#ios-sheet').hidden=true};
+$('#ios-sheet').onclick=e=>{if(e.target.id==='ios-sheet')$('#ios-sheet').hidden=true};
+addEventListener('appinstalled',()=>{inst.hidden=true;confetti();toast('App instalado! Bons estudos 💛')});
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 renderPlan();renderFilters();renderCards();renderQFilters();startQuiz();renderBag();renderXP();route();
 })();
