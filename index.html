@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
+<title>ENEM Turbo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+/* Layout: caderno de adesivos — abas fixas no topo, cartões com contorno grosso e sombra deslocada, cor por área do ENEM */
+:root{
+  --bg:#EEF2FF; --card:#FFFFFF; --ink:#1B1A2E; --muted:#5B5A78; --line:#1B1A2E;
+  --soft:#E2E7FB;
+  --lin:#FF6B5A; --hum:#FFB800; --nat:#1FB892; --mat:#3D7BFF; --red:#8B5CF6;
+  --on-accent:#1B1A2E;
+  --display:"Bricolage Grotesque", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --body:"Nunito", "Segoe UI", system-ui, sans-serif;
+  --r:16px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#14132A; --card:#211F3E; --ink:#F3F2FF; --muted:#B3B1D6; --line:#0A0918; --soft:#2C2A50;
+  --lin:#FF7A6B; --hum:#FFC53D; --nat:#35D3AA; --mat:#6B9BFF; --red:#A47BFF; --on-accent:#14132A;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14132A; --card:#211F3E; --ink:#F3F2FF; --muted:#B3B1D6; --line:#0A0918; --soft:#2C2A50;
+  --lin:#FF7A6B; --hum:#FFC53D; --nat:#35D3AA; --mat:#6B9BFF; --red:#A47BFF; --on-accent:#14132A;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px;
+  background-image:radial-gradient(var(--soft) 1.2px,transparent 1.2px);background-size:22px 22px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:920px;margin:0 auto}
+h1,h2,h3{font-family:var(--display);line-height:1.1;text-wrap:balance;margin:0}
+.sticker{background:var(--card);border:2.5px solid var(--line);border-radius:var(--r);box-shadow:4px 4px 0 var(--line)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--mat);outline-offset:2px}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;padding-top:20px}
+.hero-main{padding:22px;position:relative;overflow:hidden}
+.hero-main h1{font-size:clamp(2.2rem,7vw,3.6rem);font-weight:800;letter-spacing:-.02em}
+.hero-main h1 span{background:var(--hum);color:var(--on-accent);padding:0 .2em;border-radius:10px;border:2.5px solid var(--line);display:inline-block;transform:rotate(-2deg)}
+.hero-main p{margin:12px 0 0;color:var(--muted);max-width:46ch}
+.eyebrow{font-weight:800;font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.count{padding:18px;display:flex;flex-direction:column;gap:10px}
+.count-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.count-grid div{background:var(--soft);border-radius:12px;padding:8px 4px;text-align:center}
+.count-grid b{display:block;font-family:var(--display);font-size:1.8rem;font-variant-numeric:tabular-nums}
+.count-grid small{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.xp{display:flex;flex-direction:column;gap:6px}
+.xpbar{height:16px;border:2.5px solid var(--line);border-radius:99px;background:var(--soft);overflow:hidden}
+.xpbar i{display:block;height:100%;width:0;background:repeating-linear-gradient(-45deg,var(--nat) 0 10px,color-mix(in srgb,var(--nat) 75%,var(--card)) 10px 20px);transition:width .4s}
+.xprow{display:flex;justify-content:space-between;font-weight:800;font-size:.9rem}
+
+/* tabs */
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;margin:18px 0 20px;padding:8px 0;background:var(--bg);display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.tabs a{flex:0 0 auto;text-decoration:none;color:var(--ink);font-weight:800;padding:8px 14px;border:2.5px solid var(--line);border-radius:99px;background:var(--card);box-shadow:2px 2px 0 var(--line);transition:transform .1s}
+.tabs a:hover{transform:translate(-1px,-1px)}
+.tabs a[aria-current="page"]{background:var(--ink);color:var(--bg)}
+section[data-view]{display:flex;flex-direction:column;gap:16px}
+.sec-head{display:flex;flex-direction:column;gap:4px}
+.sec-head h2{font-size:clamp(1.6rem,5vw,2.2rem);font-weight:800}
+.sec-head p{margin:0;color:var(--muted);max-width:62ch}
+
+/* plano */
+.day{padding:18px;display:flex;flex-direction:column;gap:12px}
+.day-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.tag{display:inline-block;font-weight:800;font-size:.75rem;padding:3px 10px;border-radius:99px;border:2px solid var(--line);color:var(--on-accent)}
+.task{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--soft);cursor:pointer;user-select:none}
+.task input{appearance:none;flex:0 0 26px;height:26px;border:2.5px solid var(--line);border-radius:8px;background:var(--card);margin:0;display:grid;place-items:center;cursor:pointer}
+.task input:checked{background:var(--nat)}
+.task input:checked::after{content:"✓";font-weight:900;color:var(--on-accent)}
+.task.done .t-title{text-decoration:line-through;opacity:.6}
+.t-time{font-weight:800;font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.t-title{font-weight:700}
+.t-desc{font-size:.9rem;color:var(--muted)}
+.callout{padding:14px 16px;border-radius:12px;border:2.5px dashed var(--line);font-weight:600}
+
+/* pomodoro */
+.pomo{padding:16px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.pomo .clock{font-family:var(--display);font-size:2.6rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:5ch}
+.btn{border:2.5px solid var(--line);border-radius:12px;padding:8px 14px;font-weight:800;background:var(--card);box-shadow:2px 2px 0 var(--line)}
+.btn:active{transform:translate(2px,2px);box-shadow:none}
+.btn.primary{background:var(--hum);color:var(--on-accent)}
+.btngroup{display:flex;gap:8px;flex-wrap:wrap}
+
+/* resumos */
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:2.5px solid var(--line);border-radius:99px;padding:5px 12px;font-weight:800;background:var(--card);font-size:.85rem}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.topic{padding:0;overflow:hidden;display:flex;flex-direction:column}
+.topic header{padding:12px 16px;border-bottom:2.5px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--on-accent)}
+.topic header h3{font-size:1.15rem}
+.topic header small{font-weight:800;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em}
+.topic ul{margin:0;padding:14px 16px 4px 32px;display:flex;flex-direction:column;gap:6px;font-size:.95rem}
+.topic .foot{margin-top:auto;padding:10px 16px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.topic .peg{font-size:.85rem;color:var(--muted);font-style:italic;padding:0 16px}
+.mastered{border:2px solid var(--line);border-radius:99px;padding:4px 12px;font-weight:800;font-size:.85rem;background:var(--card)}
+.mastered[aria-pressed="true"]{background:var(--nat);color:var(--on-accent)}
+
+/* quiz */
+.quiz{padding:20px;display:flex;flex-direction:column;gap:14px}
+.qmeta{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-weight:800}
+.dots{display:flex;gap:4px;flex-wrap:wrap}
+.dots i{width:10px;height:10px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.dots i.ok{background:var(--nat)} .dots i.no{background:var(--lin)} .dots i.cur{background:var(--hum)}
+.qtext{font-family:var(--display);font-size:1.3rem;font-weight:700}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{text-align:left;border:2.5px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card);font-weight:700;display:flex;gap:10px;align-items:flex-start}
+.opt b{flex:0 0 28px;height:28px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;background:var(--soft)}
+.opt:hover:not(:disabled){background:var(--soft)}
+.opt.right{background:var(--nat);color:var(--on-accent)} .opt.wrong{background:var(--lin);color:var(--on-accent)}
+.opt:disabled{cursor:default}
+.explain{padding:12px 14px;border-radius:12px;background:var(--soft);font-weight:600}
+.result{text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.result .big{font-family:var(--display);font-size:4rem;font-weight:800}
+
+/* redação */
+.comp{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.comp div{padding:14px;display:flex;flex-direction:column;gap:4px}
+.comp b{font-family:var(--display);font-size:1.4rem}
+.comp span{font-size:.9rem;color:var(--muted)}
+.blueprint{padding:18px;display:flex;flex-direction:column;gap:10px}
+.para{border-left:6px solid var(--red);padding:8px 12px;background:var(--soft);border-radius:0 12px 12px 0}
+.para h3{font-size:1.05rem;margin-bottom:4px}
+.para p{margin:0;font-size:.95rem}
+.fill{padding:18px;display:flex;flex-direction:column;gap:12px}
+.fillgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.fillgrid label{display:flex;flex-direction:column;gap:4px;font-weight:800;font-size:.85rem}
+.fillgrid input{font:inherit;font-weight:600;padding:9px 10px;border:2.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+.preview{padding:14px;border-radius:12px;background:var(--soft);font-size:.98rem}
+.preview mark{background:color-mix(in srgb,var(--hum) 55%,transparent);color:inherit;border-radius:4px;padding:0 2px}
+.conect{display:flex;flex-wrap:wrap;gap:8px}
+.conect button{border:2px solid var(--line);border-radius:99px;padding:4px 12px;font-weight:700;background:var(--card);font-size:.9rem}
+.conect button.copied{background:var(--nat);color:var(--on-accent)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.box{padding:18px;display:flex;flex-direction:column;gap:8px}
+.box ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+
+.footnote{color:var(--muted);font-size:.85rem;text-align:center;margin-top:24px}
+canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:50}
+
+@media (max-width:680px){.hero,.two{grid-template-columns:1fr}.count-grid b{font-size:1.5rem}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<canvas id="confetti"></canvas>
+<div class="wrap">
+  <header class="hero">
+    <div class="hero-main sticker">
+      <div class="eyebrow">Missão quase impossível · 2 dias</div>
+      <h1>ENEM <span>Turbo</span></h1>
+      <p>O básico do que mais cai, num plano de dois dias. Marque as tarefas, faça o quiz e treine a redação. Cada acerto vale XP.</p>
+    </div>
+    <div class="count sticker" aria-live="polite">
+      <div class="eyebrow">Falta para o 1º dia · 08/11, 13h30</div>
+      <div class="count-grid">
+        <div><b id="cd-d">0</b><small>dias</small></div>
+        <div><b id="cd-h">0</b><small>horas</small></div>
+        <div><b id="cd-m">0</b><small>min</small></div>
+        <div><b id="cd-s">0</b><small>seg</small></div>
+      </div>
+      <div class="xp">
+        <div class="xprow"><span id="lvl">Nível 1 · Aquecendo</span><span id="xpn">0 XP</span></div>
+        <div class="xpbar"><i id="xpb"></i></div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Seções">
+    <a href="#plano">🗓️ Plano</a>
+    <a href="#resumos">📚 Resumos</a>
+    <a href="#quiz">🎯 Quiz</a>
+    <a href="#redacao">✍️ Redação</a>
+    <a href="#prova">🎒 Dia da prova</a>
+  </nav>
+
+  <!-- PLANO -->
+  <section data-view="plano">
+    <div class="sec-head">
+      <h2>O plano de ataque</h2>
+      <p>O 1º domingo (08/11) tem Linguagens, Humanas e Redação. Por isso sexta e sábado focam nessas áreas. Matemática e Natureza ficam para a semana seguinte, antes do dia 15.</p>
+    </div>
+    <div class="pomo sticker">
+      <div>
+        <div class="eyebrow" id="pomo-label">Bloco de foco</div>
+        <div class="clock" id="pomo-clock">25:00</div>
+      </div>
+      <div class="btngroup">
+        <button class="btn primary" id="pomo-start">Começar</button>
+        <button class="btn" id="pomo-reset">Zerar</button>
+        <button class="btn" id="pomo-mode">Trocar p/ pausa</button>
+      </div>
+      <div style="flex:1 1 200px;min-width:0;color:var(--muted);font-size:.9rem">25 min estudando, 5 min de pausa. Celular longe da mesa.</div>
+    </div>
+    <div id="plan"></div>
+  </section>
+
+  <!-- RESUMOS -->
+  <section data-view="resumos" hidden>
+    <div class="sec-head">
+      <h2>Resumos do que mais cai</h2>
+      <p>Leia cada cartão, explique em voz alta sem olhar e só então marque "Dominei".</p>
+    </div>
+    <div class="filters" id="filters"></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <!-- QUIZ -->
+  <section data-view="quiz" hidden>
+    <div class="sec-head">
+      <h2>Quiz relâmpago</h2>
+      <p>Perguntas curtas no estilo ENEM. Erre à vontade: a explicação aparece logo depois.</p>
+    </div>
+    <div class="filters" id="qfilters"></div>
+    <div class="quiz sticker" id="quizbox"></div>
+  </section>
+
+  <!-- REDAÇÃO -->
+  <section data-view="redacao" hidden>
+    <div class="sec-head">
+      <h2>Redação nota alta</h2>
+      <p>Vale até 1000 pontos e pesa muito na média. Texto dissertativo-argumentativo, com até 30 linhas, terminando numa proposta para resolver o problema.</p>
+    </div>
+    <div class="comp" id="comp"></div>
+    <div class="blueprint sticker">
+      <h3 style="font-size:1.3rem">A planta da redação (4 parágrafos)</h3>
+      <div class="para"><h3>1 · Introdução (≈ 6 linhas)</h3><p>Repertório (lei, autor, fato histórico) → apresenta o problema do tema → tese → anuncia os 2 argumentos.</p></div>
+      <div class="para"><h3>2 · Desenvolvimento 1 (≈ 7 linhas)</h3><p>Tópico frasal com o argumento 1 → explica a causa → exemplo ou repertório → fecha ligando ao tema.</p></div>
+      <div class="para"><h3>3 · Desenvolvimento 2 (≈ 7 linhas)</h3><p>Mesmo esquema com o argumento 2. Comece com um conectivo de adição ("Além disso", "Ademais").</p></div>
+      <div class="para"><h3>4 · Conclusão (≈ 6 linhas)</h3><p>Retoma a tese → proposta completa: <b>agente</b> + <b>ação</b> + <b>modo/meio</b> + <b>finalidade</b> + <b>detalhamento</b>.</p></div>
+    </div>
+
+    <div class="fill sticker">
+      <h3 style="font-size:1.3rem">Monte sua proposta de intervenção</h3>
+      <p style="margin:0;color:var(--muted)">Preencha os 5 elementos e veja a frase pronta. Essa parte sozinha vale até 200 pontos (Competência 5).</p>
+      <div class="fillgrid">
+        <label for="pi-ag">Agente (quem faz?)<input id="pi-ag" value="o Ministério da Educação"></label>
+        <label for="pi-ac">Ação (o que faz?)<input id="pi-ac" value="criar campanhas de conscientização nas escolas"></label>
+        <label for="pi-mo">Modo/meio (como?)<input id="pi-mo" value="por meio de palestras e oficinas mensais"></label>
+        <label for="pi-fi">Finalidade (para quê?)<input id="pi-fi" value="reduzir o problema entre os jovens"></label>
+        <label for="pi-de">Detalhamento (explique um item)<input id="pi-de" value="conduzidas por psicólogos e assistentes sociais"></label>
+      </div>
+      <div class="preview" id="pi-out"></div>
+      <div class="btngroup"><button class="btn" id="pi-copy">Copiar frase</button></div>
+    </div>
+
+    <div class="box sticker">
+      <h3 style="font-size:1.3rem">Conectivos (toque para copiar)</h3>
+      <div class="conect" id="conect"></div>
+    </div>
+
+    <div class="two">
+      <div class="box sticker">
+        <h3>Repertórios coringa</h3>
+        <ul>
+          <li><b>Constituição de 1988, art. 6º</b>: educação, saúde, moradia, lazer e segurança são direitos sociais.</li>
+          <li><b>Zygmunt Bauman</b>: "modernidade líquida", relações frágeis e passageiras. Serve para tecnologia, consumo e redes sociais.</li>
+          <li><b>Paulo Freire</b>: educação como prática da liberdade. Serve para qualquer tema de educação.</li>
+          <li><b>Sérgio Buarque de Holanda</b>: o "homem cordial", que mistura o público com o privado.</li>
+          <li><b>Herança escravocrata</b>: abolição em 1888 sem integração dos libertos, raiz de desigualdades atuais.</li>
+          <li><b>Hannah Arendt</b>: "banalidade do mal", quando a violência vira rotina e ninguém questiona.</li>
+        </ul>
+      </div>
+      <div class="box sticker">
+        <h3>O que zera a redação</h3>
+        <ul>
+          <li>Fugir totalmente do tema.</li>
+          <li>Não fazer texto dissertativo-argumentativo (poema, narração, carta).</li>
+          <li>Escrever 7 linhas ou menos.</li>
+          <li>Copiar os textos motivadores sem escrever nada próprio.</li>
+          <li>Trecho sem relação com o tema (receita, piada, música) ou deixar em branco.</li>
+          <li>Assinar ou se identificar no texto.</li>
+        </ul>
+        <p style="margin:0;color:var(--muted);font-size:.9rem">Desrespeitar direitos humanos não zera, mas tira pontos na Competência 5.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROVA -->
+  <section data-view="prova" hidden>
+    <div class="sec-head">
+      <h2>Kit do dia da prova</h2>
+      <p>Horários de Brasília, que é o mesmo horário do Rio. Confira tudo no Cartão de Confirmação no site do Inep.</p>
+    </div>
+    <div class="two">
+      <div class="box sticker">
+        <h3>Os dois domingos</h3>
+        <ul>
+          <li><b>08/11</b>: Linguagens (45), Ciências Humanas (45) e Redação.</li>
+          <li><b>15/11</b>: Ciências da Natureza (45) e Matemática (45).</li>
+          <li><b>12h</b> portões abrem · <b>13h</b> portões fecham · <b>13h30</b> começa a prova.</li>
+          <li>Em 2026 o 1º dia tem 30 minutos a mais. Confira o horário de término no cartão.</li>
+        </ul>
+      </div>
+      <div class="box sticker">
+        <h3>Checklist da mochila</h3>
+        <div id="bag" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+    <div class="box sticker">
+      <h3>Estratégia na hora H</h3>
+      <ul>
+        <li><b>Não deixe nada em branco.</b> O ENEM não desconta erro. Chute com critério nas que sobrarem.</li>
+        <li><b>Faça primeiro as fáceis.</b> Questão travou por mais de 3 minutos? Marque e pule.</li>
+        <li><b>No 1º dia, reserve cerca de 1h30 para a redação</b>, com rascunho, e 15 min para passar a limpo com caneta preta.</li>
+        <li><b>Preencha o cartão-resposta aos poucos</b>, a cada bloco de questões, para não ficar tudo para o fim.</li>
+        <li><b>Leia o comando antes do texto.</b> Muitas questões de Linguagens e Humanas se resolvem só com interpretação.</li>
+        <li>Na noite anterior: nada de estudar matéria nova. Janta leve, roupa separada e cama cedo.</li>
+      </ul>
+    </div>
+  </section>
+
+  <p class="footnote">Seu progresso fica salvo neste navegador. Boa prova! 💛</p>
+</div>
+
+<script>
+(function(){
+const store={get(k,d){try{const v=localStorage.getItem('enemturbo:'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('enemturbo:'+k,JSON.stringify(v))}catch(e){}}};
+const $=s=>document.querySelector(s);
+const AREA={lin:{n:'Linguagens',c:'var(--lin)'},hum:{n:'Humanas',c:'var(--hum)'},nat:{n:'Natureza',c:'var(--nat)'},mat:{n:'Matemática',c:'var(--mat)'},red:{n:'Redação',c:'var(--red)'}};
+
+/* ---------- XP ---------- */
+let state=store.get('state',{tasks:{},mastered:{},bag:{},quizBest:0});
+const save=()=>store.set('state',state);
+const LEVELS=['Aquecendo','Embalando','Focada','Imparável','Pronta pro ENEM'];
+function xp(){return Object.values(state.tasks).filter(Boolean).length*10+Object.values(state.mastered).filter(Boolean).length*5+state.quizBest*5}
+function renderXP(){const x=xp(),max=PLAN.reduce((a,d)=>a+d.tasks.length,0)*10+TOPICS.length*5+QUIZ.length*5;
+  const pct=Math.min(100,Math.round(x/max*100));const lv=Math.min(4,Math.floor(pct/20.01));
+  $('#xpb').style.width=pct+'%';$('#xpn').textContent=x+' XP';$('#lvl').textContent='Nível '+(lv+1)+' · '+LEVELS[lv]}
+
+/* ---------- countdown ---------- */
+const target=new Date('2026-11-08T13:30:00-03:00').getTime();
+function tick(){let d=Math.max(0,target-Date.now())/1000;
+  $('#cd-d').textContent=Math.floor(d/86400);$('#cd-h').textContent=Math.floor(d%86400/3600);
+  $('#cd-m').textContent=Math.floor(d%3600/60);$('#cd-s').textContent=Math.floor(d%60)}
+tick();setInterval(tick,1000);
+
+/* ---------- plano ---------- */
+const PLAN=[
+ {id:'d1',title:'Sexta, 06/11',sub:'Redação + Linguagens',area:'red',tasks:[
+  ['8h–9h30','Entender a redação','Leia a aba Redação: as 5 competências e a planta de 4 parágrafos.'],
+  ['9h45–11h15','Escrever uma introdução e uma conclusão','Tema treino: "Desafios para combater a desinformação no Brasil". Use a ferramenta de proposta.'],
+  ['11h30–12h30','Interpretação de texto','Resumo de Linguagens: funções da linguagem, gêneros textuais e variação linguística.'],
+  ['14h–15h30','Figuras de linguagem e literatura','Resumos de Figuras e Movimentos literários. Faça o quiz de Linguagens.'],
+  ['15h45–16h45','Artes e Inglês/Espanhol','Cartão de Língua estrangeira: o segredo é achar palavras parecidas e ler o comando.'],
+  ['19h–20h30','Redação completa cronometrada','Mesmo tema da manhã, em 1h20. Conte as linhas: entre 25 e 30.']]},
+ {id:'d2',title:'Sábado, 07/11',sub:'Humanas + revisão leve',area:'hum',tasks:[
+  ['8h–9h30','História do Brasil','Colônia e escravidão, Era Vargas, Ditadura Militar, Redemocratização.'],
+  ['9h45–11h','Geografia','Urbanização, questões ambientais, globalização e população.'],
+  ['11h15–12h15','Filosofia e Sociologia','Os pensadores que mais caem, em um cartão só.'],
+  ['14h–15h','Quiz de Humanas','Refaça até acertar tudo. Leia cada explicação.'],
+  ['15h15–16h','Revisar a redação de sexta','Corrija pelas 5 competências e reescreva só a proposta de intervenção.'],
+  ['À noite','Kit pronto e cama cedo','Separe documento, caneta preta transparente e lanche. Nada de matéria nova.']]},
+ {id:'d3',title:'Semana de 09 a 14/11',sub:'Matemática + Natureza (2º domingo)',area:'mat',tasks:[
+  ['Seg e ter','Matemática básica','Porcentagem, regra de três, média/mediana/moda, leitura de gráficos.'],
+  ['Qua','Geometria e probabilidade','Áreas, volumes, probabilidade simples.'],
+  ['Qui','Biologia','Ecologia, genética de Mendel, células.'],
+  ['Sex','Química e Física','pH, misturas, velocidade média, energia e eletricidade básica.'],
+  ['Sáb','Quiz de Mat e Natureza + descanso','Revisão leve e cama cedo de novo.']]}
+];
+function renderPlan(){const el=$('#plan');el.innerHTML='';el.style.cssText='display:flex;flex-direction:column;gap:16px';
+ PLAN.forEach(d=>{const done=d.tasks.filter((_,i)=>state.tasks[d.id+i]).length;
+  const box=document.createElement('div');box.className='day sticker';
+  box.innerHTML=`<div class="day-top"><div><h3 style="font-size:1.4rem">${d.title}</h3><span class="tag" style="background:${AREA[d.area].c};margin-top:6px">${d.sub}</span></div><b style="font-variant-numeric:tabular-nums">${done}/${d.tasks.length} feitas</b></div>`;
+  d.tasks.forEach((t,i)=>{const k=d.id+i;const lab=document.createElement('label');lab.className='task'+(state.tasks[k]?' done':'');
+   lab.innerHTML=`<input type="checkbox" id="t-${k}" ${state.tasks[k]?'checked':''}><div><div class="t-time">${t[0]}</div><div class="t-title">${t[1]}</div><div class="t-desc">${t[2]}</div></div>`;
+   lab.querySelector('input').addEventListener('change',e=>{state.tasks[k]=e.target.checked;save();
+     if(e.target.checked&&d.tasks.every((_,j)=>state.tasks[d.id+j]))confetti();renderPlan();renderXP()});
+   box.appendChild(lab)});
+  if(d.id==='d1'){const c=document.createElement('div');c.className='callout';c.style.background='color-mix(in srgb,var(--hum) 25%,var(--card))';
+   c.textContent='Dica: entre um bloco e outro, levante, beba água e coma algo. Cérebro cansado não guarda nada.';box.appendChild(c)}
+  el.appendChild(box)})}
+
+/* ---------- pomodoro ---------- */
+let pomoFocus=true,left=25*60,timer=null;
+const fmt=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+function pomoDraw(){$('#pomo-clock').textContent=fmt(left);$('#pomo-label').textContent=pomoFocus?'Bloco de foco':'Pausa';$('#pomo-mode').textContent=pomoFocus?'Trocar p/ pausa':'Trocar p/ foco'}
+function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();[0,.25,.5].forEach(t=>{const o=a.createOscillator(),g=a.createGain();o.frequency.value=880;o.connect(g);g.connect(a.destination);g.gain.setValueAtTime(.15,a.currentTime+t);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+t+.2);o.start(a.currentTime+t);o.stop(a.currentTime+t+.2)})}catch(e){}}
+$('#pomo-start').onclick=()=>{if(timer){clearInterval(timer);timer=null;$('#pomo-start').textContent='Continuar';return}
+ $('#pomo-start').textContent='Pausar';timer=setInterval(()=>{left--;if(left<=0){beep();pomoFocus=!pomoFocus;left=(pomoFocus?25:5)*60;if(!pomoFocus)confetti()}pomoDraw()},1000)};
+$('#pomo-reset').onclick=()=>{clearInterval(timer);timer=null;left=(pomoFocus?25:5)*60;$('#pomo-start').textContent='Começar';pomoDraw()};
+$('#pomo-mode').onclick=()=>{pomoFocus=!pomoFocus;left=(pomoFocus?25:5)*60;pomoDraw()};
+pomoDraw();
+
+/* ---------- resumos ---------- */
+const TOPICS=[
+ {a:'lin',t:'Funções da linguagem',p:['<b>Referencial</b>: informa (notícia).','<b>Emotiva</b>: foco no emissor, sentimentos (1ª pessoa).','<b>Conativa/apelativa</b>: convence o leitor (propaganda, imperativo).','<b>Fática</b>: testa o canal ("Alô?", "Tá me ouvindo?").','<b>Metalinguística</b>: a língua falando de si (dicionário).','<b>Poética</b>: foco na forma da mensagem (poema, ritmo).'],peg:'Pergunta-chave: qual é o foco principal do texto?'},
+ {a:'lin',t:'Variação linguística',p:['Para o ENEM, não existe "certo ou errado", existe <b>adequado ao contexto</b>.','Tipos: regional, social, histórica e situacional (formal × informal).','Preconceito linguístico costuma ser a alternativa errada.'],peg:'Alternativa que zomba de um jeito de falar quase sempre está errada.'},
+ {a:'lin',t:'Figuras de linguagem',p:['<b>Metáfora</b>: comparação sem "como" ("Ela é uma flor").','<b>Comparação</b>: com "como", "feito".','<b>Metonímia</b>: parte pelo todo ("Li Machado").','<b>Ironia</b>: diz o oposto do que quer dizer.','<b>Hipérbole</b>: exagero.','<b>Antítese</b>: ideias opostas ("amor e ódio").','<b>Personificação</b>: coisa com ação humana.'],peg:'Quase sempre aparecem em tirinhas e propagandas.'},
+ {a:'lin',t:'Movimentos literários',p:['<b>Romantismo</b>: emoção, nacionalismo, indianismo (José de Alencar).','<b>Realismo</b>: crítica social, ironia (Machado de Assis).','<b>Modernismo</b> (Semana de 1922): liberdade, linguagem coloquial, identidade brasileira (Oswald, Mário de Andrade, Drummond).'],peg:'O ENEM pede mais a característica do texto do que datas.'},
+ {a:'lin',t:'Língua estrangeira',p:['Leia primeiro o <b>enunciado</b> e as alternativas.','Procure palavras parecidas com o português (cognatos).','Cuidado com falsos cognatos: <i>pretend</i> = fingir; <i>exquisito</i> (esp.) = delicioso.','Não precisa traduzir tudo, só o trecho que responde.'],peg:'São 5 questões. Dá para gabaritar com interpretação.'},
+ {a:'hum',t:'Brasil Colônia e escravidão',p:['Economia do açúcar (Nordeste) e depois do ouro (Minas, séc. XVIII).','Trabalho escravizado de africanos e indígenas.','Resistência: quilombos (Palmares, Zumbi).','1888: <b>Lei Áurea</b>, abolição sem integração dos libertos.'],peg:'Liga com temas atuais: desigualdade e racismo estrutural.'},
+ {a:'hum',t:'Era Vargas (1930–1945)',p:['Revolução de 1930 encerra a República Velha.','Leis trabalhistas: <b>CLT em 1943</b>, salário mínimo.','Estado Novo (1937–45): ditadura, censura, propaganda (DIP).','Industrialização: CSN, Petrobras (1953, segundo governo).'],peg:'"Pai dos pobres": populismo + direitos trabalhistas.'},
+ {a:'hum',t:'Ditadura Militar (1964–1985)',p:['Golpe de 1964 derruba João Goulart.','<b>AI-5 (1968)</b>: fecha o Congresso, censura, tortura.','"Milagre econômico" com aumento da dívida e da desigualdade.','Diretas Já (1984) e Constituição de 1988, a "Cidadã".'],peg:'Músicas de protesto (Chico Buarque) aparecem muito.'},
+ {a:'hum',t:'Geografia que mais cai',p:['<b>Urbanização</b>: êxodo rural, crescimento sem planejamento, favelas, mobilidade.','<b>Meio ambiente</b>: desmatamento, efeito estufa (CO₂), aquecimento global.','Camada de ozônio é destruída por <b>CFC</b>, assunto diferente do efeito estufa.','<b>Globalização</b>: multinacionais, fluxo de informação, desigualdade entre países.'],peg:'Gráficos e mapas: leia título e legenda antes.'},
+ {a:'hum',t:'Filosofia e Sociologia',p:['<b>Platão</b>: mito da caverna, mundo das ideias.','<b>Descartes</b>: "Penso, logo existo", razão.','<b>Montesquieu</b>: três poderes (Iluminismo).','<b>Marx</b>: luta de classes, mais-valia.','<b>Durkheim</b>: fato social. <b>Weber</b>: ação social.','<b>Bauman</b>: modernidade líquida.'],peg:'Associe autor → conceito. É isso que cobram.'},
+ {a:'mat',t:'Matemática do dia a dia',p:['<b>Porcentagem</b>: 20% de 150 = 0,2 × 150 = 30.','Aumento de 10% → × 1,1. Desconto de 10% → × 0,9.','<b>Regra de três</b>: grandezas diretas multiplicam cruzado.','<b>Média</b> = soma ÷ quantidade. <b>Mediana</b> = o do meio (ordenado). <b>Moda</b> = o que mais repete.'],peg:'Estatística e porcentagem são as que mais caem.'},
+ {a:'mat',t:'Geometria e probabilidade',p:['Área do retângulo = b × h. Triângulo = b × h ÷ 2. Círculo = π r².','Volume do cubo = a³. Cilindro = π r² × h.','<b>Probabilidade</b> = casos favoráveis ÷ casos possíveis.','Escala 1:100 → 1 cm no mapa = 100 cm reais.'],peg:'Desenhe a figura no rascunho sempre.'},
+ {a:'nat',t:'Biologia essencial',p:['<b>Ecologia</b>: produtores (plantas) → consumidores → decompositores.','Fotossíntese: CO₂ + água + luz → glicose + O₂.','<b>Genética</b>: Aa × Aa → 25% AA, 50% Aa, 25% aa.','Vírus não têm célula. Bactérias não têm núcleo (procariontes).'],peg:'Ecologia + saúde pública aparecem todo ano.'},
+ {a:'nat',t:'Química e Física básicas',p:['<b>pH</b>: abaixo de 7 é ácido, 7 é neutro, acima de 7 é básico.','Misturas: filtração, decantação, destilação.','<b>Velocidade média</b> = distância ÷ tempo.','Energia: potência (W) × tempo (h) = consumo (Wh).'],peg:'Física no ENEM é muito conta de energia elétrica.'}
+];
+let filt='all';
+function renderFilters(){const f=$('#filters');f.innerHTML='';[['all','Tudo'],...Object.entries(AREA).filter(([k])=>k!=='red').map(([k,v])=>[k,v.n])].forEach(([k,n])=>{
+ const b=document.createElement('button');b.className='chip';b.textContent=n;b.setAttribute('aria-pressed',filt===k);b.onclick=()=>{filt=k;renderFilters();renderCards()};f.appendChild(b)})}
+function renderCards(){const el=$('#cards');el.innerHTML='';TOPICS.forEach((t,i)=>{if(filt!=='all'&&t.a!==filt)return;
+ const c=document.createElement('article');c.className='topic sticker';const m=!!state.mastered[i];
+ c.innerHTML=`<header style="background:${AREA[t.a].c}"><h3>${t.t}</h3><small>${AREA[t.a].n}</small></header><ul>${t.p.map(x=>`<li>${x}</li>`).join('')}</ul><p class="peg">${t.peg}</p><div class="foot"><span style="font-size:.8rem;color:var(--muted);font-weight:700">+5 XP</span><button class="mastered" aria-pressed="${m}">${m?'✓ Dominei':'Dominei'}</button></div>`;
+ c.querySelector('button').onclick=()=>{state.mastered[i]=!m;save();renderCards();renderXP()};el.appendChild(c)})}
+
+/* ---------- quiz ---------- */
+const QUIZ=[
+ {a:'lin',q:'Um texto em 1ª pessoa que expressa saudade e tristeza tem como função predominante a:',o:['Referencial','Emotiva','Conativa','Fática'],r:1,e:'Foco no emissor e em seus sentimentos = função emotiva (ou expressiva).'},
+ {a:'lin',q:'Um verbete de dicionário que explica o significado da palavra "palavra" usa a função:',o:['Poética','Fática','Metalinguística','Conativa'],r:2,e:'Quando a linguagem fala da própria linguagem, a função é metalinguística.'},
+ {a:'lin',q:'Em "Aquele zagueiro é uma muralha", a figura de linguagem é:',o:['Metáfora','Hipérbole','Antítese','Metonímia'],r:0,e:'Comparação direta, sem "como". É metáfora.'},
+ {a:'lin',q:'Para o ENEM, a fala "Cê vai na festa?" numa conversa entre amigos é:',o:['Um erro de português','Adequada ao contexto informal','Proibida na escrita','Variação histórica'],r:1,e:'A prova valoriza a adequação ao contexto e combate o preconceito linguístico.'},
+ {a:'lin',q:'Uma propaganda com "Compre já!" e "Você merece!" usa principalmente a função:',o:['Conativa (apelativa)','Referencial','Emotiva','Metalinguística'],r:0,e:'Verbo no imperativo e foco no leitor: função conativa.'},
+ {a:'hum',q:'A Consolidação das Leis do Trabalho (CLT) foi criada em 1943, no governo de:',o:['Juscelino Kubitschek','Getúlio Vargas','Dom Pedro II','Fernando Henrique'],r:1,e:'A CLT é da Era Vargas, durante o Estado Novo.'},
+ {a:'hum',q:'O AI-5, de 1968, ficou marcado por:',o:['Fim da escravidão','Ampliar a liberdade de imprensa','Endurecer a ditadura, com censura e fechamento do Congresso','Criar o voto feminino'],r:2,e:'O AI-5 foi o ato mais duro da Ditadura Militar.'},
+ {a:'hum',q:'A abolição da escravidão no Brasil (Lei Áurea) aconteceu em:',o:['1822','1888','1889','1930'],r:1,e:'13 de maio de 1888. 1822 é a Independência e 1889 a República.'},
+ {a:'hum',q:'A divisão do poder em Executivo, Legislativo e Judiciário foi proposta por:',o:['Montesquieu','Marx','Platão','Descartes'],r:0,e:'Montesquieu, pensador iluminista, em "O Espírito das Leis".'},
+ {a:'hum',q:'O conceito de "fato social" é de:',o:['Max Weber','Karl Marx','Émile Durkheim','Zygmunt Bauman'],r:2,e:'Durkheim: fato social. Weber: ação social. Marx: luta de classes.'},
+ {a:'hum',q:'A principal causa da destruição da camada de ozônio é:',o:['Gás CFC','Desmatamento','Esgoto','Energia solar'],r:0,e:'O CFC destrói o ozônio. O efeito estufa é outro problema, ligado ao CO₂.'},
+ {a:'hum',q:'O crescimento das favelas nas grandes cidades brasileiras está ligado principalmente a:',o:['Urbanização rápida e sem planejamento','Baixa natalidade','Clima tropical','Fim da indústria'],r:0,e:'Êxodo rural + falta de política habitacional = urbanização desordenada.'},
+ {a:'red',q:'Na redação do ENEM, cada competência vale no máximo:',o:['100 pontos','200 pontos','250 pontos','500 pontos'],r:1,e:'São 5 competências de 200 pontos, total de 1000.'},
+ {a:'red',q:'A proposta de intervenção é avaliada na:',o:['Competência 1','Competência 2','Competência 4','Competência 5'],r:3,e:'C5 avalia a proposta: agente, ação, modo, finalidade e detalhamento.'},
+ {a:'red',q:'Qual destes ZERA a redação?',o:['Usar um conectivo repetido','Escrever só 7 linhas','Não citar autor','Fazer 3 parágrafos'],r:1,e:'Texto com até 7 linhas é considerado insuficiente e recebe zero.'},
+ {a:'mat',q:'Um tênis de R$ 150 está com 20% de desconto. Quanto custa?',o:['R$ 130','R$ 120','R$ 30','R$ 125'],r:1,e:'20% de 150 = 30. 150 − 30 = 120. Ou 150 × 0,8 = 120.'},
+ {a:'mat',q:'A mediana de 3, 7, 2, 9 e 5 é:',o:['5','5,2','7','3'],r:0,e:'Ordene: 2, 3, 5, 7, 9. O do meio é 5. (5,2 é a média.)'},
+ {a:'mat',q:'Ao lançar um dado comum, a chance de sair um número par é:',o:['1/6','1/3','1/2','2/3'],r:2,e:'Pares: 2, 4, 6 → 3 de 6 = 1/2.'},
+ {a:'nat',q:'Um carro percorre 120 km em 2 horas. A velocidade média é:',o:['240 km/h','60 km/h','120 km/h','30 km/h'],r:1,e:'v = d ÷ t = 120 ÷ 2 = 60 km/h.'},
+ {a:'nat',q:'Uma substância com pH 3 é:',o:['Básica','Neutra','Ácida','Salina'],r:2,e:'pH menor que 7 indica solução ácida.'},
+ {a:'nat',q:'Cruzando Aa × Aa, a chance de nascer aa é:',o:['0%','25%','50%','75%'],r:1,e:'AA, Aa, Aa, aa → 1 em 4 = 25%.'},
+ {a:'nat',q:'Em uma cadeia alimentar, as plantas são:',o:['Decompositores','Consumidores primários','Produtores','Consumidores secundários'],r:2,e:'Fazem fotossíntese e produzem o próprio alimento.'}
+];
+let qf='all',qs=[],qi=0,score=0,hist=[];
+function renderQFilters(){const f=$('#qfilters');f.innerHTML='';[['all','Misturado'],...Object.entries(AREA).map(([k,v])=>[k,v.n])].forEach(([k,n])=>{
+ const b=document.createElement('button');b.className='chip';b.textContent=n;b.setAttribute('aria-pressed',qf===k);b.onclick=()=>{qf=k;renderQFilters();startQuiz()};f.appendChild(b)})}
+function startQuiz(){qs=QUIZ.filter(q=>qf==='all'||q.a===qf).sort(()=>Math.random()-.5);qi=0;score=0;hist=[];drawQ()}
+function drawQ(){const box=$('#quizbox');
+ if(qi>=qs.length){const pct=Math.round(score/qs.length*100);
+  if(qf==='all'&&score>state.quizBest){state.quizBest=score;save();renderXP()}
+  if(pct>=70)confetti();
+  box.innerHTML=`<div class="result"><div class="eyebrow">Resultado</div><div class="big">${score}/${qs.length}</div><p style="margin:0;font-weight:700">${pct>=80?'Arrasou! Isso é nível ENEM. 🔥':pct>=50?'Bom! Revise os cartões das que errou e tente de novo.':'Calma, é treino. Leia os resumos e volte aqui.'}</p><button class="btn primary" id="again">Jogar de novo</button>${qf!=='all'?'':'<p style="margin:0;color:var(--muted);font-size:.85rem">No modo Misturado, cada acerto da sua melhor rodada vale 5 XP.</p>'}</div>`;
+  $('#again').onclick=startQuiz;return}
+ const q=qs[qi];
+ box.innerHTML=`<div class="qmeta"><span class="tag" style="background:${AREA[q.a].c}">${AREA[q.a].n}</span><span style="font-variant-numeric:tabular-nums">Questão ${qi+1} de ${qs.length} · ${score} acertos</span></div>
+ <div class="dots">${qs.map((_,i)=>`<i class="${i<hist.length?(hist[i]?'ok':'no'):(i===qi?'cur':'')}"></i>`).join('')}</div>
+ <div class="qtext">${q.q}</div><div class="opts">${q.o.map((o,i)=>`<button class="opt" data-i="${i}"><b>${'ABCD'[i]}</b><span>${o}</span></button>`).join('')}</div><div id="qx"></div>`;
+ box.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{const i=+b.dataset.i,ok=i===q.r;if(ok)score++;hist.push(ok);
+  box.querySelectorAll('.opt').forEach(x=>{x.disabled=true;if(+x.dataset.i===q.r)x.classList.add('right')});if(!ok)b.classList.add('wrong');
+  $('#qx').innerHTML=`<div class="explain"><b>${ok?'Isso aí! ':'Quase. '}</b>${q.e}</div><div class="btngroup" style="margin-top:12px"><button class="btn primary" id="next">${qi+1<qs.length?'Próxima →':'Ver resultado'}</button></div>`;
+  $('#next').onclick=()=>{qi++;drawQ()};$('#next').focus()})}
+
+/* ---------- redação ---------- */
+const COMP=[['C1','Norma culta: ortografia, acentuação, concordância.'],['C2','Entender o tema e usar repertório no formato dissertativo-argumentativo.'],['C3','Organizar e defender um ponto de vista.'],['C4','Coesão: conectivos ligando frases e parágrafos.'],['C5','Proposta de intervenção completa.']];
+$('#comp').innerHTML=COMP.map(([c,d])=>`<div class="sticker"><b>${c} <small style="font-size:.8rem;color:var(--muted)">200 pts</small></b><span>${d}</span></div>`).join('');
+const ids=['ag','ac','mo','fi','de'];
+function pi(){const v=Object.fromEntries(ids.map(k=>[k,($('#pi-'+k).value||'…').trim()]));
+ const s=`Portanto, cabe a <mark>${v.ag}</mark> <mark>${v.ac}</mark>, <mark>${v.mo}</mark>, <mark>${v.de}</mark>, a fim de <mark>${v.fi}</mark>.`;
+ $('#pi-out').innerHTML=s;const n=ids.filter(k=>$('#pi-'+k).value.trim()).length;
+ $('#pi-out').insertAdjacentHTML('beforeend',`<div style="margin-top:8px;font-weight:800;font-size:.85rem;color:var(--muted)">${n}/5 elementos preenchidos</div>`);
+ store.set('pi',Object.fromEntries(ids.map(k=>[k,$('#pi-'+k).value])))}
+const savedPi=store.get('pi',null);if(savedPi)ids.forEach(k=>{if(savedPi[k]!=null)$('#pi-'+k).value=savedPi[k]});
+ids.forEach(k=>$('#pi-'+k).addEventListener('input',pi));pi();
+function copy(text,btn,label){const done=()=>{btn.classList.add('copied');const o=btn.textContent;btn.textContent=label||'Copiado!';setTimeout(()=>{btn.classList.remove('copied');btn.textContent=o},1200)};
+ try{navigator.clipboard.writeText(text).then(done,done)}catch(e){done()}}
+$('#pi-copy').onclick=e=>copy($('#pi-out').childNodes[0]?$('#pi-out').textContent.replace(/\d\/5 elementos preenchidos$/,'').trim():'',e.target);
+const CON=['Em primeira análise,','Além disso,','Ademais,','Nesse sentido,','Dessa forma,','Por conseguinte,','Entretanto,','No entanto,','Sob essa ótica,','Isso ocorre porque','Diante disso,','Portanto,','Em suma,','Logo,'];
+CON.forEach(c=>{const b=document.createElement('button');b.textContent=c;b.onclick=()=>copy(c,b);$('#conect').appendChild(b)});
+
+/* ---------- mochila ---------- */
+const BAG=['Documento oficial com foto (original)','Caneta esferográfica preta de tubo transparente','Cartão de Confirmação impresso (recomendado)','Água em garrafa transparente sem rótulo','Lanche leve (fruta, barrinha, sanduíche)','Casaco (sala pode ser gelada)','Chegar até 12h, portão fecha às 13h'];
+function renderBag(){const el=$('#bag');el.innerHTML='';BAG.forEach((b,i)=>{const l=document.createElement('label');l.className='task'+(state.bag[i]?' done':'');
+ l.innerHTML=`<input type="checkbox" id="bag-${i}" ${state.bag[i]?'checked':''}><div class="t-title">${b}</div>`;
+ l.querySelector('input').onchange=e=>{state.bag[i]=e.target.checked;save();if(BAG.every((_,j)=>state.bag[j]))confetti();renderBag()};el.appendChild(l)})}
+
+/* ---------- confetti ---------- */
+const cv=$('#confetti'),cx=cv.getContext('2d');let parts=[],raf=null;
+function confetti(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;cv.width=innerWidth;cv.height=innerHeight;
+ const cs=getComputedStyle(document.documentElement),cols=['--lin','--hum','--nat','--mat','--red'].map(c=>cs.getPropertyValue(c).trim());
+ for(let i=0;i<140;i++)parts.push({x:innerWidth/2,y:innerHeight/3,vx:(Math.random()-.5)*14,vy:Math.random()*-12-3,s:Math.random()*8+5,c:cols[i%5],r:Math.random()*6,life:120});
+ if(!raf)loop()}
+function loop(){cx.clearRect(0,0,cv.width,cv.height);parts.forEach(p=>{p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.r+=.1;p.life--;cx.save();cx.translate(p.x,p.y);cx.rotate(p.r);cx.fillStyle=p.c;cx.fillRect(-p.s/2,-p.s/4,p.s,p.s/2);cx.restore()});
+ parts=parts.filter(p=>p.life>0&&p.y<cv.height+20);raf=parts.length?requestAnimationFrame(loop):(cx.clearRect(0,0,cv.width,cv.height),null)}
+
+/* ---------- rotas ---------- */
+const VIEWS=['plano','resumos','quiz','redacao','prova'];
+function route(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'plano';
+ document.querySelectorAll('section[data-view]').forEach(s=>s.hidden=s.dataset.view!==v);
+ document.querySelectorAll('.tabs a').forEach(a=>a.getAttribute('href')==='#'+v?a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'))}
+addEventListener('hashchange',route);
+
+renderPlan();renderFilters();renderCards();renderQFilters();startQuiz();renderBag();renderXP();route();
+})();
+</script>
+</body>
+</html>
