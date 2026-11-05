@@ -192,16 +192,58 @@ button,a,label,.opt{-webkit-tap-highlight-color:transparent;touch-action:manipul
   .qtext{font-size:1.15rem}
 }
 @media (display-mode:standalone){.install{display:none!important}}
+
+/* ---- login ---- */
+.whoami{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-size:1rem}
+.whoami .btn{padding:5px 12px;font-size:.85rem}
+.login{min-height:100%;display:flex;flex-direction:column;gap:18px;max-width:520px;margin:0 auto;padding-block:28px}
+.login h1{font-size:clamp(2.4rem,10vw,3.4rem);font-weight:800}
+.login h1 span{background:var(--hum);color:var(--on-accent);padding:0 .2em;border-radius:10px;border:2.5px solid var(--line);display:inline-block;transform:rotate(-2deg)}
+#plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+.prof{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 10px;font-weight:800;font-size:1.1rem;position:relative}
+.prof .pe{font-size:2.6rem;line-height:1}
+.prof small{position:absolute;top:8px;right:10px;font-size:.9rem}
+.prof:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--line)}
+.lcard{padding:18px;display:flex;flex-direction:column;gap:12px}
+.lcard label{display:flex;flex-direction:column;gap:4px;font-weight:800;font-size:.85rem}
+.lcard input{font:inherit;font-size:16px;font-weight:600;padding:11px 12px;border:2.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+#emos{display:flex;flex-wrap:wrap;gap:8px}
+.emo{font-size:1.5rem;width:46px;height:46px;border:2.5px solid var(--line);border-radius:12px;background:var(--card)}
+.emo[aria-pressed="true"]{background:var(--hum)}
+.err{margin:0;color:var(--lin);font-weight:800}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
 </head>
 <body>
 <canvas id="confetti"></canvas>
+<div class="login" id="login" hidden>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="eyebrow">Missão quase impossível · 2 dias</div>
+    <h1>ENEM <span>Turbo</span></h1>
+    <p style="margin:0;color:var(--muted);font-weight:600">Quem vai estudar agora? Cada perfil guarda o próprio plano, XP e quiz.</p>
+  </div>
+  <div id="plist"></div>
+  <div class="lcard sticker" id="pinbox" hidden>
+    <h3>Senha de <span id="pin-name"></span></h3>
+    <label for="pin-in">4 números<input id="pin-in" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
+    <p class="err" id="pin-err" hidden>Senha errada. Tente de novo.</p>
+    <div class="btngroup"><button class="btn primary" id="pin-go">Entrar</button><button class="btn" id="pin-cancel">Voltar</button></div>
+  </div>
+  <form class="lcard sticker" id="newform">
+    <h3>Novo perfil</h3>
+    <label for="np-name">Nome<input id="np-name" maxlength="20" placeholder="Ex.: Bia" autocomplete="off"></label>
+    <div style="display:flex;flex-direction:column;gap:6px"><span style="font-weight:800;font-size:.85rem">Escolha um emoji</span><div id="emos"></div></div>
+    <label for="np-pin">Senha de 4 números (opcional)<input id="np-pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Deixe em branco se não quiser"></label>
+    <p class="err" id="np-err" hidden></p>
+    <button class="btn primary" type="submit">Criar e começar</button>
+  </form>
+</div>
 <div class="wrap">
   <header class="hero">
     <div class="hero-main sticker">
       <div class="eyebrow">Missão quase impossível · 2 dias</div>
+      <div class="whoami"><span id="who"></span><button class="btn" id="switch">Trocar</button></div>
       <h1>ENEM <span>Turbo</span></h1>
       <p>O básico do que mais cai, num plano de dois dias. Marque as tarefas, faça o quiz e treine a redação. Cada acerto vale XP.</p>
     </div>
@@ -389,8 +431,37 @@ button,a,label,.opt{-webkit-tap-highlight-color:transparent;touch-action:manipul
 
 <script>
 (function(){
-const store={get(k,d){try{const v=localStorage.getItem('enemturbo:'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('enemturbo:'+k,JSON.stringify(v))}catch(e){}}};
 const $=s=>document.querySelector(s);
+const mk=pre=>({get(k,d){try{const v=localStorage.getItem(pre+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(pre+k,JSON.stringify(v))}catch(e){}}});
+const gstore=mk('enemturbo:');
+
+/* ---------- perfis (login) ---------- */
+let profiles=gstore.get('profiles',[]);
+let ME=profiles.find(p=>p.id===gstore.get('current',null));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+if(!ME){loginScreen();return}
+const store=mk('enemturbo:u:'+ME.id+':');
+$('#who').innerHTML=`<span style="font-size:1.3rem">${ME.emoji}</span> Oi, <b>${esc(ME.name)}</b>`;
+$('#switch').onclick=()=>{gstore.set('current',null);location.reload()};
+
+function loginScreen(){
+ const L=$('#login');L.hidden=false;document.querySelector('.wrap').hidden=true;
+ const EMO=['🦄','🌻','🚀','🐱','🔥','🌈','🎧','🦋'];let pick=EMO[profiles.length%EMO.length],sel=null;
+ function draw(){
+  L.querySelector('#plist').innerHTML=profiles.length?profiles.map(p=>`<button class="prof sticker" data-id="${p.id}"><span class="pe">${p.emoji}</span><span>${esc(p.name)}</span>${p.pin?'<small>🔒</small>':''}</button>`).join(''):'<p style="margin:0;color:var(--muted);font-weight:600">Ninguém por aqui ainda. Crie o primeiro perfil abaixo.</p>';
+  L.querySelectorAll('.prof').forEach(b=>b.onclick=()=>{const p=profiles.find(x=>x.id===b.dataset.id);
+   if(!p.pin){enter(p);return}sel=p;$('#pinbox').hidden=false;$('#pin-name').textContent=p.name;$('#pin-in').value='';$('#pin-err').hidden=true;$('#pin-in').focus()});
+  $('#emos').innerHTML=EMO.map(e=>`<button type="button" class="emo" aria-pressed="${e===pick}">${e}</button>`).join('');
+  $('#emos').querySelectorAll('.emo').forEach(b=>b.onclick=()=>{pick=b.textContent;draw()})}
+ function enter(p){gstore.set('current',p.id);location.reload()}
+ $('#pin-go').onclick=()=>{if($('#pin-in').value===sel.pin)enter(sel);else{$('#pin-err').hidden=false;$('#pin-in').value='';$('#pin-in').focus()}};
+ $('#pin-in').onkeydown=e=>{if(e.key==='Enter')$('#pin-go').click()};
+ $('#pin-cancel').onclick=()=>{$('#pinbox').hidden=true};
+ $('#newform').onsubmit=e=>{e.preventDefault();const name=$('#np-name').value.trim(),pin=$('#np-pin').value.trim();
+  if(!name){$('#np-err').textContent='Escreva um nome.';$('#np-err').hidden=false;return}
+  if(pin&&!/^\d{4}$/.test(pin)){$('#np-err').textContent='A senha precisa ter 4 números (ou deixe em branco).';$('#np-err').hidden=false;return}
+  const p={id:Date.now().toString(36),name:name.slice(0,20),emoji:pick,pin:pin||null};profiles.push(p);gstore.set('profiles',profiles);enter(p)};
+ draw()}
 const AREA={lin:{n:'Linguagens',c:'var(--lin)'},hum:{n:'Humanas',c:'var(--hum)'},nat:{n:'Natureza',c:'var(--nat)'},mat:{n:'Matemática',c:'var(--mat)'},red:{n:'Redação',c:'var(--red)'}};
 
 /* ---------- XP ---------- */
@@ -571,7 +642,7 @@ const isIOS=/iphone|ipad|ipod/i.test(ua)||(navigator.platform==='MacIntel'&&navi
 const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 let deferred=null;
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
-function showInstall(){if(standalone||store.get('installDismissed',false))return;inst.hidden=false}
+function showInstall(){if(standalone||gstore.get('installDismissed',false))return;inst.hidden=false}
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;showInstall()});
 if(isIOS)showInstall();
 if(/android/i.test(ua))setTimeout(showInstall,2500);
@@ -579,7 +650,7 @@ $('#install-btn').onclick=async()=>{
  if(deferred){deferred.prompt();const r=await deferred.userChoice.catch(()=>null);deferred=null;if(r&&r.outcome==='accepted'){inst.hidden=true;toast('Instalando… 🎉')}}
  else if(isIOS){$('#ios-sheet').hidden=false;$('#ios-ok').focus()}
  else toast('Use o menu do navegador ⋮ → "Instalar app"')};
-$('#install-x').onclick=()=>{inst.hidden=true;store.set('installDismissed',true)};
+$('#install-x').onclick=()=>{inst.hidden=true;gstore.set('installDismissed',true)};
 $('#ios-ok').onclick=()=>{$('#ios-sheet').hidden=true};
 $('#ios-sheet').onclick=e=>{if(e.target.id==='ios-sheet')$('#ios-sheet').hidden=true};
 addEventListener('appinstalled',()=>{inst.hidden=true;confetti();toast('App instalado! Bons estudos 💛')});

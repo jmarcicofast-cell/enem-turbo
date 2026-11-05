@@ -1,5 +1,5 @@
 // ENEM Turbo — funciona offline depois da primeira visita
-const CACHE = 'enem-turbo-v2';
+const CACHE = 'enem-turbo-v3';
 const CORE = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
