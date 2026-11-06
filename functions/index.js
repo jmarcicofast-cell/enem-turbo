@@ -1,7 +1,7 @@
 // ENEM Turbo — funções do servidor (Firebase Cloud Functions, 2ª geração)
 // - corrigirRedacao: correção de redação com IA (Claude), com 1 correção grátis e limite diário no Pro
-// - criarPagamento: cria o link de pagamento do Mercado Pago (Pix e cartão)
-// - webhookMercadoPago: recebe o aviso do Mercado Pago e libera o Pro
+// - criarPagamento: cria a cobrança no Asaas (Pix, cartão ou boleto)
+// - webhookAsaas: recebe o aviso do Asaas e libera (ou retira, em estorno) o Pro
 // - concederPro: a administradora libera Pro de cortesia (ex.: para as irmãs)
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
@@ -14,7 +14,8 @@ const REGION = 'southamerica-east1';
 setGlobalOptions({ region: REGION, maxInstances: 10 });
 
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
-const MP_ACCESS_TOKEN = defineSecret('MP_ACCESS_TOKEN');
+const ASAAS_API_KEY = defineSecret('ASAAS_API_KEY');
+const ASAAS_WEBHOOK_TOKEN = defineSecret('ASAAS_WEBHOOK_TOKEN');
 const ADMIN_EMAILS = defineString('ADMIN_EMAILS', { default: '' });
 const APP_URL = defineString('APP_URL', { default: 'https://jmarcicofast-cell.github.io/enem-turbo/' });
 const IA_MODEL = defineString('IA_MODEL', { default: 'claude-sonnet-5-5' });
@@ -159,28 +160,56 @@ exports.corrigirRedacao = onCall({ secrets: [ANTHROPIC_API_KEY], timeoutSeconds:
   }
 });
 
-/* ======================= pagamento (Mercado Pago) ======================= */
-exports.criarPagamento = onCall({ secrets: [MP_ACCESS_TOKEN] }, async req => {
+/* ======================= pagamento (Asaas) ======================= */
+// Chave de produção começa com $aact_prod_ ; de sandbox (testes), com $aact_hmlg_
+function asaasBase() { return /_hmlg_/.test(ASAAS_API_KEY.value()) ? 'https://api-sandbox.asaas.com/v3' : 'https://api.asaas.com/v3' }
+async function asaas(method, path, body) {
+  const r = await fetch(asaasBase() + path, {
+    method, headers: { 'Content-Type': 'application/json', 'User-Agent': 'ENEM-Turbo', access_token: ASAAS_API_KEY.value() },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let j = {}; try { j = await r.json() } catch (e) {}
+  return { ok: r.ok, status: r.status, j };
+}
+function cpfValido(c) {
+  c = String(c || '').replace(/\D/g, '');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += +c[i] * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r };
+  return dv(9) === +c[9] && dv(10) === +c[10];
+}
+const amanha = () => new Date(Date.now() - 3 * 3600e3 + 864e5).toISOString().slice(0, 10);
+
+exports.criarPagamento = onCall({ secrets: [ASAAS_API_KEY] }, async req => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para assinar.');
-  const plano = PLANOS[req.data && req.data.plano];
+  const planoId = req.data && req.data.plano, plano = PLANOS[planoId];
   if (!plano) throw new HttpsError('invalid-argument', 'Plano inválido.');
   const uid = req.auth.uid, base = par(APP_URL, 'https://jmarcicofast-cell.github.io/enem-turbo/');
-  const pref = {
-    items: [{ id: req.data.plano, title: plano.titulo, quantity: 1, unit_price: plano.preco, currency_id: 'BRL' }],
-    payer: req.auth.token.email ? { email: req.auth.token.email } : undefined,
-    external_reference: `${uid}|${req.data.plano}`,
-    metadata: { uid, plano: req.data.plano },
-    back_urls: { success: base + '?pago=ok', pending: base + '?pago=pendente', failure: base + '?pago=erro' },
-    auto_return: 'approved',
-    notification_url: `https://${REGION}-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/webhookMercadoPago`,
-    statement_descriptor: 'ENEMTURBO'
+  const ref = db.collection('plans').doc(uid), snap = await ref.get(), p = snap.exists ? snap.data() : {};
+
+  // cliente no Asaas (criado uma vez; o CPF vai direto para o Asaas e não fica guardado no app)
+  let customer = p.asaasCliente;
+  if (!customer) {
+    const cpf = String((req.data && req.data.cpf) || '').replace(/\D/g, '');
+    const nome = String((req.data && req.data.nome) || req.auth.token.name || '').trim().slice(0, 100);
+    if (!cpfValido(cpf)) throw new HttpsError('invalid-argument', 'CPF inválido. Confira os números.');
+    if (nome.length < 3) throw new HttpsError('invalid-argument', 'Escreva o nome completo de quem vai pagar.');
+    const c = await asaas('POST', '/customers', { name: nome, cpfCnpj: cpf, email: req.auth.token.email || undefined, externalReference: uid, notificationDisabled: true });
+    if (!c.ok || !c.j.id) { console.error('asaas cliente', c.status, JSON.stringify(c.j)); throw new HttpsError('unavailable', (c.j.errors && c.j.errors[0] && c.j.errors[0].description) || 'Não consegui registrar seus dados de pagamento.') }
+    customer = c.j.id; await ref.set({ asaasCliente: customer }, { merge: true });
+  }
+
+  const cobranca = {
+    customer, billingType: 'UNDEFINED', value: plano.preco, dueDate: amanha(),
+    description: plano.titulo, externalReference: `${uid}|${planoId}`,
+    callback: { successUrl: base + '?pago=ok', autoRedirect: true }
   };
-  const r = await fetch('https://api.mercadopago.com/checkout/preferences', {
-    method: 'POST', headers: { Authorization: 'Bearer ' + MP_ACCESS_TOKEN.value(), 'Content-Type': 'application/json' }, body: JSON.stringify(pref)
-  });
-  const j = await r.json();
-  if (!r.ok) { console.error('MP', r.status, j); throw new HttpsError('unavailable', 'Não consegui abrir o pagamento agora. Tente de novo.') }
-  return { url: j.init_point, id: j.id };
+  let r = await asaas('POST', '/payments', cobranca);
+  if (!r.ok && JSON.stringify(r.j).toLowerCase().includes('callback')) {
+    // o Asaas só aceita successUrl do domínio cadastrado na conta; sem ele, cria sem redirecionar
+    delete cobranca.callback; r = await asaas('POST', '/payments', cobranca);
+  }
+  if (!r.ok || !r.j.invoiceUrl) { console.error('asaas cobrança', r.status, JSON.stringify(r.j)); throw new HttpsError('unavailable', 'Não consegui abrir o pagamento agora. Tente de novo.') }
+  return { url: r.j.invoiceUrl, id: r.j.id };
 });
 
 async function liberarPro(uid, dias, origem) {
@@ -191,23 +220,39 @@ async function liberarPro(uid, dias, origem) {
     tx.set(ref, { ate: admin.firestore.Timestamp.fromMillis(base + dias * 864e5), origem, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   });
 }
+async function retirarPro(uid, dias, origem) {
+  const ref = db.collection('plans').doc(uid);
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref), p = snap.exists ? snap.data() : {};
+    if (!ehPro(p)) return;
+    const ate = Math.max(Date.now(), p.ate.toMillis() - dias * 864e5);
+    tx.set(ref, { ate: admin.firestore.Timestamp.fromMillis(ate), origem, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+}
 
-exports.webhookMercadoPago = onRequest({ secrets: [MP_ACCESS_TOKEN] }, async (req, res) => {
+// Configure no Asaas: Integrações → Webhooks → URL desta função, eventos de Cobrança, com o mesmo token de ASAAS_WEBHOOK_TOKEN
+exports.webhookAsaas = onRequest({ secrets: [ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN] }, async (req, res) => {
   try {
-    const tipo = req.query.type || req.query.topic || (req.body && req.body.type);
-    const id = req.query['data.id'] || (req.body && req.body.data && req.body.data.id) || req.query.id;
-    if (tipo !== 'payment' || !id) { res.status(200).send('ignorado'); return }
-    // confirma direto na API do Mercado Pago (não confia no corpo do aviso)
-    const r = await fetch('https://api.mercadopago.com/v1/payments/' + encodeURIComponent(id), { headers: { Authorization: 'Bearer ' + MP_ACCESS_TOKEN.value() } });
-    const pg = await r.json();
-    if (!r.ok) { console.error('MP get', r.status, pg); res.status(200).send('erro consulta'); return }
-    if (pg.status !== 'approved') { res.status(200).send('status ' + pg.status); return }
-    const [uid, planoId] = String(pg.external_reference || '').split('|');
-    const plano = PLANOS[planoId];
-    if (!uid || !plano || Number(pg.transaction_amount) + 0.01 < plano.preco) { console.error('referência inválida', pg.external_reference, pg.transaction_amount); res.status(200).send('ref'); return }
-    const pref = db.collection('pagamentos').doc(String(pg.id));
-    const novo = await db.runTransaction(async tx => { const s = await tx.get(pref); if (s.exists) return false; tx.set(pref, { uid, plano: planoId, valor: pg.transaction_amount, metodo: pg.payment_method_id || '', em: admin.firestore.FieldValue.serverTimestamp() }); return true });
-    if (novo) await liberarPro(uid, plano.dias, 'mercadopago:' + pg.id);
+    if (req.method !== 'POST') { res.status(200).send('ok'); return }
+    if (req.get('asaas-access-token') !== ASAAS_WEBHOOK_TOKEN.value()) { res.status(401).send('token'); return }
+    const ev = req.body || {}, evento = ev.event, pay = ev.payment || {};
+    const pagos = ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'], estornos = ['PAYMENT_REFUNDED', 'PAYMENT_CHARGEBACK_REQUESTED'];
+    if (!pay.id || (!pagos.includes(evento) && !estornos.includes(evento))) { res.status(200).send('ignorado'); return }
+    // confirma direto na API do Asaas (não confia só no corpo do aviso)
+    const g = await asaas('GET', '/payments/' + encodeURIComponent(pay.id));
+    if (!g.ok) { console.error('asaas get', g.status, JSON.stringify(g.j)); res.status(200).send('erro consulta'); return }
+    const pg = g.j, [uid, planoId] = String(pg.externalReference || '').split('|'), plano = PLANOS[planoId];
+    if (!uid || !plano) { res.status(200).send('ref'); return }
+    const reg = db.collection('pagamentos').doc('asaas_' + pg.id);
+    if (pagos.includes(evento)) {
+      if (!['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(pg.status) || Number(pg.value) + 0.01 < plano.preco) { res.status(200).send('status ' + pg.status); return }
+      // CONFIRMED e RECEIVED chegam para o mesmo pagamento: libera uma vez só
+      const novo = await db.runTransaction(async tx => { const s = await tx.get(reg); if (s.exists) return false; tx.set(reg, { uid, plano: planoId, valor: pg.value, metodo: pg.billingType || '', status: pg.status, em: admin.firestore.FieldValue.serverTimestamp() }); return true });
+      if (novo) await liberarPro(uid, plano.dias, 'asaas:' + pg.id);
+    } else {
+      const s = await reg.get();
+      if (s.exists && !s.data().estornado) { await reg.set({ estornado: true }, { merge: true }); await retirarPro(uid, plano.dias, 'estorno:' + pg.id) }
+    }
     res.status(200).send('ok');
   } catch (e) { console.error(e); res.status(500).send('erro') }
 });

@@ -1,8 +1,8 @@
 # Como ativar o ENEM Turbo Pro
 
 O app já está no ar. Este passo a passo liga as três partes que precisam do servidor:
-a correção de redação com IA, o pagamento pelo Mercado Pago e a liberação do Pro.
-Faça uma vez só. Leva cerca de 30 minutos.
+a correção de redação com IA, o pagamento pelo **Asaas** e a liberação do Pro.
+Faça uma vez só. Leva cerca de 30 a 40 minutos.
 
 ## 1. Plano Blaze no Firebase
 O Firebase só roda funções de servidor no plano Blaze (pago por uso, com cota grátis mensal).
@@ -16,10 +16,14 @@ O Firebase só roda funções de servidor no plano Blaze (pago por uso, com cota
 2. Em **API Keys**, clique em **Create Key** e copie a chave (começa com `sk-ant-`).
 3. Os preços por uso ficam em **docs.claude.com** (página de preços). Cada correção usa uma chamada.
 
-## 3. Credenciais do Mercado Pago
-1. Entre em **mercadopago.com.br/developers**, vá em **Suas integrações** e crie uma aplicação (Checkout Pro).
-2. Para testar primeiro, use as **credenciais de teste**. Para vender de verdade, use as **credenciais de produção**.
-3. Copie o **Access Token** (começa com `APP_USR-` em produção ou `TEST-` em teste).
+## 3. Chave do Asaas
+1. Para **testar** primeiro, crie uma conta no **sandbox do Asaas** (ambiente de testes, sem dinheiro real).
+2. Na conta (de teste ou a real), vá em **Integrações → Chave de API** e gere a chave.
+   - Chave de teste começa com `$aact_hmlg_`. Chave real começa com `$aact_prod_`.
+   - O servidor percebe sozinho qual é e usa o endereço certo.
+3. Em **Minha conta → Informações**, cadastre o site `jmarcicofast-cell.github.io`.
+   Sem isso, o Asaas não devolve a pessoa para o app depois do pagamento (o Pro libera do mesmo jeito).
+4. Invente um **token do webhook**: uma senha longa só de letras e números (ex.: `enemTurbo2026XyZ9kQ`). Guarde, você vai usar 2 vezes.
 
 ## 4. Publicar o servidor (pelo navegador, sem instalar nada)
 1. Abra **shell.cloud.google.com** com a mesma conta Google do Firebase.
@@ -30,24 +34,37 @@ git clone https://github.com/jmarcicofast-cell/enem-turbo
 cd enem-turbo/functions && npm install && cd ..
 npx firebase-tools login --no-localhost
 npx firebase-tools functions:secrets:set ANTHROPIC_API_KEY
-npx firebase-tools functions:secrets:set MP_ACCESS_TOKEN
+npx firebase-tools functions:secrets:set ASAAS_API_KEY
+npx firebase-tools functions:secrets:set ASAAS_WEBHOOK_TOKEN
 npx firebase-tools deploy --only functions,firestore:rules
 ```
 
 - No `login`, abra o link que aparece, autorize e cole o código de volta.
-- Em cada `secrets:set`, cole a chave correspondente e aperte Enter.
+- Em cada `secrets:set`, cole o valor correspondente e aperte Enter (no último, o token que você inventou).
 - No `deploy`, quando perguntar **ADMIN_EMAILS**, digite o seu e-mail de login no app.
   Nas outras perguntas, só aperte Enter para usar o valor padrão.
 
-## 5. Liberar o Pro para as suas irmãs
+## 5. Ligar o aviso de pagamento (webhook) no Asaas
+1. No Asaas, vá em **Integrações → Webhooks → Adicionar**.
+2. Preencha:
+   - **URL:** `https://southamerica-east1-enem-turbo-ceb3c.cloudfunctions.net/webhookAsaas`
+   - **Token de autenticação:** o mesmo token que você inventou no passo 3.
+   - **Versão da API:** v3 · **Tipo de envio:** sequencial · **Ativo:** sim
+   - **Eventos:** Cobranças → `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`, `PAYMENT_REFUNDED`, `PAYMENT_CHARGEBACK_REQUESTED`
+3. Salve. Se um dia aparecer "fila pausada", reative a fila nessa mesma tela.
+
+## 6. Liberar o Pro para as suas irmãs
 1. Elas criam a conta no app normalmente.
 2. Você entra no app com o seu e-mail e abre **jmarcicofast-cell.github.io/enem-turbo/admin.html**.
 3. Digite o e-mail de cada uma e quantos dias de Pro quer dar.
 
-## 6. Testar uma compra
-1. Com as credenciais de **teste** do Mercado Pago, toque em **Seja Pro** no app e pague com um cartão de teste.
-2. O app volta sozinho e o selo muda para **⭐ PRO** em alguns segundos.
-3. Funcionou? Troque o `MP_ACCESS_TOKEN` pelo de **produção** (repita o `secrets:set` e o `deploy`).
+## 7. Testar uma compra
+1. Com a chave de **teste** (sandbox), toque em **Seja Pro** no app, preencha nome e CPF e pague com Pix de teste.
+2. No painel do sandbox, abra a cobrança criada e use **Confirmar recebimento** para simular o pagamento.
+3. O selo do app muda para **⭐ PRO** em alguns segundos.
+4. Funcionou? Troque `ASAAS_API_KEY` pela chave **real**, refaça o webhook na conta real e rode de novo o `deploy`.
+
+Se a pessoa pedir estorno ou abrir contestação no cartão, o servidor retira os dias de Pro automaticamente.
 
 ## Onde mudar as coisas
 | O quê | Onde |

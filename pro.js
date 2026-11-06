@@ -52,9 +52,17 @@ function proBadge() {
   const b = $('#pro-btn'); if (!b) return;
   if (isPro()) { b.textContent = '⭐ PRO'; b.classList.add('is-pro') } else { b.textContent = '⭐ Seja Pro'; b.classList.remove('is-pro') }
 }
+function cpfValido(c) {
+  c = String(c || '').replace(/\D/g, '');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += +c[i] * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r };
+  return dv(9) === +c[9] && dv(10) === +c[10];
+}
+const maskCpf = v => v.replace(/\D/g, '').slice(0, 11).replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 function openPro(motivo) {
   const sh = $('#pro-sheet'), pro = isPro();
-  let sel = 'anual';
+  let sel = 'anual', cpf = '', nome = (ET.S && ET.S.name) || '';
+  const temCliente = () => !!(ET.PLAN && ET.PLAN.asaasCliente);
   const draw = () => {
     sh.querySelector('.sheet').innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 class="logo" style="font-size:1.5rem">ENEM <span>Turbo</span> Pro</h3><button class="link" id="pro-x" aria-label="Fechar">✕</button></div>
@@ -69,16 +77,29 @@ function openPro(motivo) {
       </ul>
       <div class="plans">${PLANOS.map(p => `<button class="plan ${p.id === sel ? 'sel' : ''} ${p.top ? 'top' : ''}" data-p="${p.id}">${p.top ? '<span class="ribbon">Mais escolhido</span>' : ''}<b>${p.nome}</b><span class="price">${brl(p.preco)}</span><small>${p.sub}</small></button>`).join('')}</div>
       ${!ET.CLOUD ? '<p class="err">Para assinar, o app precisa estar com login por e-mail ativado.</p>' : ''}
-      <button class="btn primary big" id="pay" ${!ET.CLOUD ? 'disabled' : ''}>Pagar com Mercado Pago · Pix ou cartão</button>
-      <p class="muted" style="margin:0;font-size:.82rem;text-align:center">Pagamento único, sem renovação automática. O Pro é liberado assim que o pagamento é aprovado.</p>`;
+      ${ET.CLOUD && !temCliente() ? `<div class="payer"><span class="lbl">Dados de quem vai pagar</span>
+        <label class="f" for="pay-nome">Nome completo<input type="text" id="pay-nome" autocomplete="name" value="${ET.esc(nome)}"></label>
+        <label class="f" for="pay-cpf">CPF<input type="text" id="pay-cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" value="${ET.esc(cpf)}"></label>
+        <small class="muted">O pagamento é processado pelo Asaas, que exige CPF. O app não guarda o seu CPF.</small></div>` : ''}
+      <p class="err" id="pay-err" hidden></p>
+      <button class="btn primary big" id="pay" ${!ET.CLOUD ? 'disabled' : ''}>Pagar com Pix, cartão ou boleto</button>
+      <p class="muted" style="margin:0;font-size:.82rem;text-align:center">Pagamento único pelo Asaas, sem renovação automática. Pix e cartão liberam o Pro na hora; boleto, quando for compensado.</p>`;
     sh.querySelectorAll('.plan').forEach(b => b.onclick = () => { sel = b.dataset.p; draw() });
     $('#pro-x').onclick = () => sh.hidden = true;
+    const ci = $('#pay-cpf'), ni = $('#pay-nome');
+    if (ci) ci.oninput = () => { ci.value = maskCpf(ci.value); cpf = ci.value };
+    if (ni) ni.oninput = () => { nome = ni.value };
     $('#pay').onclick = async () => {
-      const btn = $('#pay'); btn.disabled = true; btn.textContent = 'Abrindo o Mercado Pago…';
+      const btn = $('#pay'), er = $('#pay-err'); er.hidden = true;
+      if (!temCliente()) {
+        if (nome.trim().split(/\s+/).length < 2) { er.textContent = 'Escreva o nome completo de quem vai pagar.'; er.hidden = false; return }
+        if (!cpfValido(cpf)) { er.textContent = 'CPF inválido. Confira os números.'; er.hidden = false; return }
+      }
+      btn.disabled = true; btn.textContent = 'Abrindo o pagamento…';
       try {
-        const r = await ET.fb.fn.httpsCallable('criarPagamento')({ plano: sel });
+        const r = await ET.fb.fn.httpsCallable('criarPagamento')({ plano: sel, cpf: cpf.replace(/\D/g, ''), nome: nome.trim() });
         location.href = r.data.url;
-      } catch (e) { btn.disabled = false; btn.textContent = 'Pagar com Mercado Pago · Pix ou cartão'; ET.toast(erroFn(e, 'Não consegui abrir o pagamento.')) }
+      } catch (e) { btn.disabled = false; btn.textContent = 'Pagar com Pix, cartão ou boleto'; er.textContent = erroFn(e, 'Não consegui abrir o pagamento.'); er.hidden = false }
     };
   };
   draw(); sh.hidden = false;
