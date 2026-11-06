@@ -230,6 +230,8 @@ function exigirAdmin(req) {
   if (!email || !admins.includes(email)) throw new HttpsError('permission-denied', 'Só a administradora pode fazer isso.');
   return email;
 }
+// o app pergunta se a conta logada é administradora (para mostrar a área de administração)
+exports.souAdmin = onCall(async req => { try { exigirAdmin(req); return { admin: true } } catch (e) { return { admin: false } } });
 exports.salvarCupom = onCall(async req => {
   const email = exigirAdmin(req), d = req.data || {};
   const codigo = normCupom(d.codigo); if (codigo.length < 3) throw new HttpsError('invalid-argument', 'O código precisa de pelo menos 3 letras ou números.');

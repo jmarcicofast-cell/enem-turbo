@@ -74,7 +74,7 @@ async function bootCloud() {
     USER.name = S.name;
     ls.set('cache:' + u.uid, S);
     if (!remote || local.updatedAt > remote.updatedAt) save();
-    startApp();
+    startApp(); checarAdmin();
     setSync(remote ? 'Progresso sincronizado ☁️' : 'Conta pronta. Seu progresso fica salvo na nuvem ☁️');
   });
 }
@@ -137,7 +137,49 @@ function bootLocal() {
   draw();
 }
 
-$('#logout').onclick = () => { if (CLOUD && fb) { fb.auth.signOut(); ls.set('lastUser', null) } else { ls.set('current', null); location.reload() } };
+function sair() { if (CLOUD && fb) { fb.auth.signOut(); ls.set('lastUser', null); $('#cfg-sheet').hidden = true; $('#adm-btn').hidden = true; ADMIN = false } else { ls.set('current', null); location.reload() } }
+
+/* --- administradora: o servidor confere o e-mail (ADMIN_EMAILS) --- */
+let ADMIN = false;
+async function checarAdmin() {
+  if (!CLOUD || !fb || !fb.auth.currentUser) return;
+  try { const r = await fb.fn.httpsCallable('souAdmin')(); ADMIN = !!(r.data && r.data.admin) } catch (e) { ADMIN = false }
+  $('#adm-btn').hidden = !ADMIN;
+}
+$('#adm-btn').onclick = () => { location.href = 'admin.html' };
+
+/* --- configurações da conta --- */
+function abrirConfig() {
+  const sh = $('#cfg-sheet'), u = CLOUD && fb && fb.auth.currentUser;
+  const ate = PLAN && PLAN.ate && PLAN.ate.toMillis ? PLAN.ate.toMillis() : 0, pro = ate > Date.now();
+  sh.querySelector('.sheet').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 class="logo" style="font-size:1.5rem">Configurações</h3><button class="link" id="cfg-x" aria-label="Fechar">✕</button></div>
+    <form id="cfg-f" style="display:flex;flex-direction:column;gap:12px">
+      <label class="f" for="cfg-nome">Seu nome<input type="text" id="cfg-nome" maxlength="40" value="${esc(S.name || USER.name || '')}" autocomplete="name"></label>
+      ${u ? `<label class="f" for="cfg-mail">E-mail da conta<input type="email" id="cfg-mail" value="${esc(u.email || '')}" disabled></label>` : ''}
+      <button class="btn primary" type="submit">Salvar</button>
+    </form>
+    ${u ? `<div class="payer"><span class="lbl">Senha</span><p class="muted" style="margin:0">Enviamos um link para ${esc(u.email || '')} para você criar uma senha nova.</p><button class="btn" id="cfg-senha">Trocar minha senha</button></div>` : ''}
+    <div class="payer"><span class="lbl">Plano</span>
+      <p style="margin:0">${pro ? `⭐ <b>Pro</b> até ${new Date(ate).toLocaleDateString('pt-BR')}` : 'Plano grátis'}</p>
+      <button class="btn" id="cfg-pro">${pro ? 'Renovar o Pro' : 'Conhecer o Pro'}</button></div>
+    ${ADMIN ? `<div class="payer"><span class="lbl">Administração</span><p class="muted" style="margin:0">Cupons de desconto e Pro de cortesia.</p><a class="btn" href="admin.html" style="text-align:center;text-decoration:none">🛠️ Abrir a área de administração</a></div>` : ''}
+    <button class="btn" id="cfg-sair">Sair da conta</button>
+    <p class="muted" id="syncinfo2" style="margin:0;font-size:.82rem;text-align:center">${esc(($('#syncinfo') && $('#syncinfo').textContent) || '')}</p>`;
+  $('#cfg-x').onclick = () => sh.hidden = true;
+  $('#cfg-f').onsubmit = async e => {
+    e.preventDefault(); const n = $('#cfg-nome').value.trim(); if (!n) return toast('Escreva seu nome.');
+    S.name = n; USER.name = n; save(); renderHome();
+    if (u) { try { await u.updateProfile({ displayName: n }); ls.set('lastUser', USER) } catch (er) {} }
+    else { const ps = ls.get('profiles', []), cur = ps.find(p => 'u:' + p.id === USER.id); if (cur) { cur.name = n; ls.set('profiles', ps) } }
+    toast('Pronto, salvo!'); sh.hidden = true;
+  };
+  if ($('#cfg-senha')) $('#cfg-senha').onclick = async () => { try { await fb.auth.sendPasswordResetEmail(u.email); toast('Enviei o link para ' + u.email) } catch (er) { toast(AUTH_MSG[er.code] || 'Não consegui enviar agora.') } };
+  $('#cfg-pro').onclick = () => { sh.hidden = true; $('#pro-btn').click() };
+  $('#cfg-sair').onclick = sair;
+  sh.hidden = false; sh.onclick = e => { if (e.target === sh) sh.hidden = true };
+}
+$('#cfg-btn').onclick = abrirConfig;
 
 /* ================= progresso: rodadas de revisão espaçada ================= */
 // Cada assunto com exercícios passa por 3 rodadas: Aprender (60%) → Revisão após 1h (70%) → Fixação após 8h (80%).

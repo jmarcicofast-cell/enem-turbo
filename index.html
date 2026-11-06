@@ -331,7 +331,7 @@ details.quick p{margin:8px 0 0}
 <div class="col" id="home" hidden>
   <div class="top">
     <span class="who" id="who"></span>
-    <span style="display:flex;gap:8px;flex:0 0 auto"><button class="btn small pro-btn" id="pro-btn">⭐ Seja Pro</button><button class="btn small" id="logout">Sair</button></span>
+    <span style="display:flex;gap:8px;flex:0 0 auto"><button class="btn small pro-btn" id="pro-btn">⭐ Seja Pro</button><button class="btn small" id="adm-btn" hidden>🛠️ Admin</button><button class="btn small" id="cfg-btn" aria-label="Configurações">⚙️</button></span>
   </div>
   <div class="stats sticker">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -367,6 +367,7 @@ details.quick p{margin:8px 0 0}
 <div class="col view" id="v-crono" hidden></div>
 <div class="col view" id="v-painel" hidden></div>
 <nav class="nav" id="nav" hidden aria-label="Seções do app"></nav>
+<div class="sheet-bg" id="cfg-sheet" hidden><div class="sheet sticker pro-sheet" role="dialog" aria-modal="true" aria-label="Configurações"></div></div>
 <div class="sheet-bg" id="pro-sheet" hidden><div class="sheet sticker pro-sheet" role="dialog" aria-modal="true" aria-label="ENEM Turbo Pro"></div></div>
 
 <!-- LIÇÃO -->
