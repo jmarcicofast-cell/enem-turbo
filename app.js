@@ -5,15 +5,31 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const ls = { get(k, d) { try { const v = localStorage.getItem('enemturbo:' + k); return v ? JSON.parse(v) : d } catch (e) { return d } },
              set(k, v) { try { localStorage.setItem('enemturbo:' + k, JSON.stringify(v)) } catch (e) {} } };
 function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2800) }
-function show(id) { ['loading', 'auth', 'home'].forEach(x => $('#' + x).hidden = x !== id) }
+function show(id) { ['loading', 'auth'].forEach(x => $('#' + x).hidden = x !== id); if (id === 'home') PRO.showShell(); else PRO.hideShell() }
+const PRO = window.PRO || { showShell() { $('#home').hidden = false }, hideShell() { $('#home').hidden = true }, init() {}, onStart() {}, onPlan() {}, homeExtras() { return '' } };
 
+const BANKMAP = {}; (window.BANK || []).forEach(b => BANKMAP[b.id] = b);
+const QALL = Object.assign({}, Q, BANKMAP);
+const PREF = [['int', 'geral'], ['red', 'red'], ['rt', 'red'], ['in', 'red'], ['de', 'red'], ['co', 'red'], ['por', 'por'], ['fig', 'por'], ['lit', 'lit'], ['lem', 'lem'], ['his', 'his'], ['geom', 'mat'], ['geo', 'geo'], ['fil', 'fil'], ['soc', 'soc'], ['mat', 'mat'], ['bio', 'bio'], ['qui', 'qui'], ['fis', 'fis']];
+function subjOf(id) { if (BANKMAP[id]) return BANKMAP[id].m; const p = PREF.find(x => id.startsWith(x[0])); return p ? p[1] : 'geral' }
+function difOf(id) { return BANKMAP[id] ? BANKMAP[id].d : 'f' }
+function provaOf(id) { return BANKMAP[id] ? BANKMAP[id].p : 'ambos' }
+function dayKey(t) { const d = new Date(t || Date.now()); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+function track(id, ok) {
+  S.agg = S.agg || { m: {}, d: {} }; S.days = S.days || {};
+  const m = subjOf(id), d = difOf(id), k = dayKey();
+  const inc = (o, key) => { o[key] = o[key] || { a: 0, o: 0 }; o[key].a++; if (ok) o[key].o++ };
+  inc(S.agg.m, m); inc(S.agg.d, d);
+  S.days[k] = S.days[k] || { a: 0, o: 0, ms: 0 }; S.days[k].a++; if (ok) S.days[k].o++;
+}
+function addTime() { if (!L || !L.t0) return; const k = dayKey(); S.days = S.days || {}; S.days[k] = S.days[k] || { a: 0, o: 0, ms: 0 }; S.days[k].ms += Math.min(Date.now() - L.t0, 90 * 60e3); L.t0 = Date.now() }
 const FLAT = []; TRAIL.forEach((d, di) => d.items.forEach(it => { it.day = di; FLAT.push(it) }));
 const blank = () => ({ name: '', done: {}, bag: {}, pi: {}, checks: {}, wrong: {}, red: {}, mt: {}, stats: { ans: 0, ok: 0 }, updatedAt: 0 });
 
 /* ================= armazenamento: nuvem (Firebase) ou local ================= */
 const CFG = window.FIREBASE_CONFIG || {};
 const CLOUD = !!(CFG.apiKey && CFG.projectId);
-let S = blank(), USER = null, saveTimer = null, fb = null;
+let S = blank(), USER = null, saveTimer = null, fb = null, PLAN = {};
 
 function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s) }) }
 
@@ -33,7 +49,7 @@ async function bootCloud() {
   const V = '10.12.2';
   try {
     await loadScript(`https://www.gstatic.com/firebasejs/${V}/firebase-app-compat.js`);
-    await Promise.all([loadScript(`https://www.gstatic.com/firebasejs/${V}/firebase-auth-compat.js`), loadScript(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore-compat.js`)]);
+    await Promise.all([loadScript(`https://www.gstatic.com/firebasejs/${V}/firebase-auth-compat.js`), loadScript(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore-compat.js`), loadScript(`https://www.gstatic.com/firebasejs/${V}/firebase-functions-compat.js`)]);
   } catch (e) {
     // sem internet na primeira abertura: usa o último usuário salvo
     const last = ls.get('lastUser', null);
@@ -41,9 +57,12 @@ async function bootCloud() {
     show('auth'); $('#cloudform').hidden = false; authErr('Sem internet. Conecte-se para entrar a primeira vez.'); return;
   }
   firebase.initializeApp(CFG);
-  fb = { auth: firebase.auth(), db: firebase.firestore() };
+  fb = { auth: firebase.auth(), db: firebase.firestore(), fn: firebase.app().functions('southamerica-east1') };
+  let planUnsub = null;
   fb.auth.onAuthStateChanged(async u => {
-    if (!u) { USER = null; show('auth'); $('#cloudform').hidden = false; return }
+    if (!u) { USER = null; PLAN = {}; if (planUnsub) { planUnsub(); planUnsub = null } show('auth'); $('#cloudform').hidden = false; return }
+    if (planUnsub) planUnsub();
+    planUnsub = fb.db.collection('plans').doc(u.uid).onSnapshot(sn => { PLAN = sn.exists ? sn.data() : {}; PRO.onPlan() }, () => {});
     USER = { id: u.uid, name: u.displayName || (u.email || '').split('@')[0] };
     ls.set('lastUser', USER);
     const local = Object.assign(blank(), ls.get('cache:' + u.uid, {}));
@@ -179,7 +198,7 @@ function renderHome() {
   $('#who').innerHTML = `${USER.emoji ? USER.emoji + ' ' : '👋 '}Oi, <b>${esc(S.name || USER.name)}</b>`;
   renderXP();
   const na = nextAction(), nb = $('#next');
-  const wrongN = Object.keys(S.wrong).filter(k => Q[k]).length;
+  const wrongN = Object.keys(S.wrong).filter(k => QALL[k]).length;
   const cadernoBtn = wrongN ? `<button class="btn" id="caderno" style="width:100%">📕 Caderno de erros · ${wrongN} ${wrongN === 1 ? 'questão' : 'questões'}</button>` : '';
   if (na) {
     const it = na.it, idx = FLAT.indexOf(it), A = AREAS[it.area], d = rec(it);
@@ -205,6 +224,7 @@ function renderHome() {
     nb.innerHTML = `<div class="eyebrow">Trilha dominada</div><div class="title">Você fez as 3 rodadas de tudo! 🎉</div><p style="margin:0" class="muted">Agora é treinar redação no papel e refazer os simulados.</p>${cadernoBtn}`;
   }
   if ($('#caderno')) $('#caderno').onclick = openCaderno;
+  if (PRO.renderHomeExtra) PRO.renderHomeExtra();
 
   const tr = $('#trail'); tr.innerHTML = '';
   TRAIL.forEach(dd => {
@@ -241,7 +261,7 @@ function renderHome() {
 let L = null; // { it, round, steps, i, score }
 let sinceBreak = 0;
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]] } return a }
-const qStep = id => ({ t: 'q', id, opts: shuffle(Q[id].o.map((o, k) => ({ o, ok: k === 0 }))) });
+const qStep = id => ({ t: 'q', id, opts: shuffle(QALL[id].o.map((o, k) => ({ o, ok: k === 0 }))) });
 function flashFrom(it) {
   const out = [];
   (it.learn || []).forEach(c => c.b.forEach(x => { const m = x.match(/^<b>([^<]{2,30})<\/b>\s*[:–-]?\s*(.{6,})$/); if (m && !/[.!]$/.test(m[1].trim())) out.push({ f: m[1].replace(/[:.]$/, ''), back: m[2], h: c.h }) }));
@@ -274,25 +294,40 @@ function buildSteps(it, round) {
 }
 function sessionQ() { return L.steps.filter(s => s.t === 'q').length }
 function openItem(it, round) {
-  L = { it, round: round || 1, steps: buildSteps(it, round || 1), i: 0, score: 0 };
+  L = { it, round: round || 1, steps: buildSteps(it, round || 1), i: 0, score: 0, t0: Date.now() };
   $('#player').hidden = false; document.body.style.overflow = 'hidden';
   try { history.pushState({ lesson: 1 }, '') } catch (e) {}
   drawStep();
 }
-function openReplace(it, round) { clearInterval(tmr); tmr = null; L = { it, round: round || 1, steps: buildSteps(it, round || 1), i: 0, score: 0 }; drawStep() }
+function openReplace(it, round) { clearInterval(tmr); tmr = null; addTime(); stopSimTimer(); L = { it, round: round || 1, steps: buildSteps(it, round || 1), i: 0, score: 0, t0: Date.now() }; drawStep() }
+// sessões do Pro (treino livre, simulados): cfg = { title, area, ids, label, intro, timerSec, onDone(L) }
+let simTmr = null;
+function stopSimTimer() { clearInterval(simTmr); simTmr = null; const el = $('#p-timer'); if (el) el.hidden = true }
+function openCustom(cfg) {
+  if (!cfg.ids.length) return toast('Nenhuma questão com esses filtros.');
+  L = { it: { id: 'custom', title: cfg.title, area: cfg.area || 'geral' }, round: 1, custom: cfg, steps: (cfg.intro ? [{ t: 'xintro' }] : []).concat(cfg.ids.map(qStep)), i: 0, score: 0, t0: Date.now(), ans: [] };
+  $('#player').hidden = false; document.body.style.overflow = 'hidden';
+  try { history.pushState({ lesson: 1 }, '') } catch (e) {}
+  drawStep();
+}
+function startSimTimer(sec) {
+  const el = $('#p-timer'); el.hidden = false; L.deadline = Date.now() + sec * 1000;
+  const upd = () => { if (!L) return stopSimTimer(); const left = Math.max(0, Math.round((L.deadline - Date.now()) / 1000)); el.textContent = '⏱ ' + (left >= 3600 ? Math.floor(left / 3600) + 'h' + String(Math.floor(left % 3600 / 60)).padStart(2, '0') : fmt(left)); el.classList.toggle('late', left < 300); if (!left) { stopSimTimer(); toast('Tempo esgotado!'); L.timeout = true; L.i = L.steps.length; drawStep() } };
+  clearInterval(simTmr); simTmr = setInterval(upd, 1000); upd();
+}
 function openCaderno() {
-  const ids = shuffle(Object.keys(S.wrong).filter(k => Q[k])).slice(0, 12);
+  const ids = shuffle(Object.keys(S.wrong).filter(k => QALL[k])).slice(0, 12);
   if (!ids.length) return toast('Caderno vazio! 🎉');
-  L = { it: { id: 'caderno', title: 'Caderno de erros', area: 'geral' }, round: 1, caderno: true, steps: [{ t: 'cintro', n: ids.length }].concat(ids.map(qStep)), i: 0, score: 0, before: Object.keys(S.wrong).length };
+  L = { it: { id: 'caderno', title: 'Caderno de erros', area: 'geral' }, round: 1, caderno: true, steps: [{ t: 'cintro', n: ids.length }].concat(ids.map(qStep)), i: 0, score: 0, before: Object.keys(S.wrong).length, t0: Date.now() };
   $('#player').hidden = false; document.body.style.overflow = 'hidden';
   try { history.pushState({ lesson: 1 }, '') } catch (e) {}
   drawStep();
 }
 function closePlayer(fromPop) {
-  if (!L) return; L = null; clearInterval(tmr); tmr = null;
+  if (!L) return; addTime(); save(); L = null; clearInterval(tmr); tmr = null; stopSimTimer();
   $('#player').hidden = true; document.body.style.overflow = '';
   if (!fromPop) { try { history.back() } catch (e) {} }
-  renderHome(); window.scrollTo(0, 0);
+  renderHome(); PRO.refresh && PRO.refresh(); window.scrollTo(0, 0);
 }
 addEventListener('popstate', () => { if (L) closePlayer(true) });
 $('#p-close').onclick = () => closePlayer(false);
@@ -303,8 +338,13 @@ function adv() { L.i++; drawStep() }
 function drawStep() {
   setBar(); $('#pbody').scrollTop = 0;
   const P = $('#pinner'), st = L.steps[L.i], it = L.it, A = AREAS[it.area];
-  if (!st) return L.caderno ? drawCadernoResult() : drawResult();
+  if (!st) { if (L.custom) { stopSimTimer(); addTime(); save(); $('#p-bar').style.width = '100%'; return L.custom.onDone(L) } return L.caderno ? drawCadernoResult() : drawResult() }
   const T = {
+    xintro() {
+      P.innerHTML = L.custom.intro;
+      foot(`<button class="btn primary big" id="nx">${L.custom.startLabel || 'Começar →'}</button>`);
+      $('#nx').onclick = () => { if (L.custom.onBegin) L.custom.onBegin(); if (L.custom.timerSec) startSimTimer(L.custom.timerSec); adv() };
+    },
     intro() {
       P.innerHTML = `<div class="box sticker"><span class="eyebrow">Simulado</span><h2 style="font-size:1.6rem">${it.title}</h2>
         <p style="margin:0">${it.n} questões sorteadas de tudo o que você estudou. Faça sem consultar, como na prova.</p>
@@ -370,12 +410,12 @@ function drawStep() {
 }
 
 function drawQ(P, st) {
-  const q = Q[st.id], all = L.steps.filter(s => s.t === 'q'), qi = all.indexOf(st), qt = all.length;
+  const q = QALL[st.id], all = L.steps.filter(s => s.t === 'q'), qi = all.indexOf(st), qt = all.length;
   let sel = null;
-  const label = L.caderno ? 'Caderno de erros' : L.it.type === 'sim' ? 'Simulado' : L.round > 1 ? `Rodada ${L.round} · ${RNAME[L.round - 1]}` : 'Passo 2 · Pratique';
+  const label = L.custom ? L.custom.label : L.caderno ? 'Caderno de erros' : L.it.type === 'sim' ? 'Simulado' : L.round > 1 ? `Rodada ${L.round} · ${RNAME[L.round - 1]}` : 'Passo 2 · Pratique';
   P.innerHTML = `<div class="eyebrow">${label} · questão ${qi + 1} de ${qt}</div>
     <div class="qtext">${q.q}</div>
-    <div class="opts">${st.opts.map((o, i) => `<button class="opt" data-i="${i}"><b>${'ABCD'[i]}</b><span>${o.o}</span></button>`).join('')}</div>
+    <div class="opts">${st.opts.map((o, i) => `<button class="opt" data-i="${i}"><b>${'ABCDE'[i]}</b><span>${o.o}</span></button>`).join('')}</div>
     <div id="fb"></div>`;
   foot(`<button class="btn primary big" id="nx" disabled>Confirmar</button>`);
   const opts = P.querySelectorAll('.opt');
@@ -383,7 +423,7 @@ function drawQ(P, st) {
   $('#nx').onclick = () => {
     if (sel === null) return;
     const ok = st.opts[sel].ok; if (ok) L.score++;
-    S.stats.ans++; if (ok) S.stats.ok++;
+    S.stats.ans++; if (ok) S.stats.ok++; track(st.id, ok); if (L.ans) L.ans.push({ id: st.id, ok });
     if (!ok) S.wrong[st.id] = 2; else if (S.wrong[st.id]) { S.wrong[st.id]--; if (S.wrong[st.id] <= 0) delete S.wrong[st.id] }
     save();
     opts.forEach((x, i) => { x.disabled = true; x.classList.remove('sel'); if (st.opts[i].ok) x.classList.add('right'); else if (i === sel) x.classList.add('wrong') });
@@ -603,8 +643,18 @@ $('#ios-sheet').onclick = e => { if (e.target.id === 'ios-sheet') $('#ios-sheet'
 addEventListener('appinstalled', () => { inst.hidden = true; confetti(); toast('App instalado! Bons estudos 💛') });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
+
+/* ================= API usada pelo pro.js ================= */
+window.ET = {
+  get S() { return S }, get USER() { return USER }, get PLAN() { return PLAN }, get fb() { return fb }, CLOUD,
+  QALL, BANKMAP, subjOf, difOf, provaOf, dayKey, FLAT, closed: it => closed(it), lvl: it => lvl(it), nextAction: () => nextAction(),
+  save, toast, esc, confetti: () => confetti(), shuffle: a => shuffle(a), openItem: (it, r) => openItem(it, r), openCustom, openCaderno: () => openCaderno(),
+  closePlayer: () => closePlayer(false), foot: h => foot(h), renderHome: () => renderHome(), qStep: id => qStep(id), startSimTimer
+};
+PRO.init(window.ET);
+
 /* ================= iniciar ================= */
 let ticking = null;
-function startApp() { migrate(); show('home'); renderHome(); tick(); if (!ticking) ticking = setInterval(tick, 1000) }
+function startApp() { migrate(); if (!S.first) { S.first = Date.now(); save() } show('home'); renderHome(); PRO.onStart(); tick(); if (!ticking) ticking = setInterval(tick, 1000) }
 CLOUD ? bootCloud() : bootLocal();
 })();

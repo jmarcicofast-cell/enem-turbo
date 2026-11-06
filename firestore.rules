@@ -1,9 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // cada irmã só lê e grava o próprio progresso
+    function dono(uid) { return request.auth != null && request.auth.uid == uid; }
+
+    // progresso de estudo: cada pessoa lê e grava só o seu
     match /enemTurbo/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if dono(uid);
+      // correções de redação feitas pela IA: só o servidor grava
+      match /correcoes/{id} {
+        allow read: if dono(uid);
+        allow write: if false;
+      }
+    }
+
+    // plano Pro: a pessoa só lê. Quem grava é o servidor (após o pagamento)
+    match /plans/{uid} {
+      allow read: if dono(uid);
+      allow write: if false;
+    }
+
+    // registro de pagamentos: só o servidor
+    match /pagamentos/{id} {
+      allow read, write: if false;
     }
   }
 }
