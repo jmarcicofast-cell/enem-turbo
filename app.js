@@ -8,7 +8,7 @@ function toast(msg) { const t = document.createElement('div'); t.className = 'to
 function show(id) { ['loading', 'auth', 'home'].forEach(x => $('#' + x).hidden = x !== id) }
 
 const FLAT = []; TRAIL.forEach((d, di) => d.items.forEach(it => { it.day = di; FLAT.push(it) }));
-const blank = () => ({ name: '', done: {}, bag: {}, pi: {}, checks: {}, updatedAt: 0 });
+const blank = () => ({ name: '', done: {}, bag: {}, pi: {}, checks: {}, wrong: {}, red: {}, mt: {}, stats: { ans: 0, ok: 0 }, updatedAt: 0 });
 
 /* ================= armazenamento: nuvem (Firebase) ou local ================= */
 const CFG = window.FIREBASE_CONFIG || {};
@@ -120,89 +120,170 @@ function bootLocal() {
 
 $('#logout').onclick = () => { if (CLOUD && fb) { fb.auth.signOut(); ls.set('lastUser', null) } else { ls.set('current', null); location.reload() } };
 
-/* ================= progresso / XP ================= */
-const isDone = it => !!(S.done[it.id] && !S.done[it.id].skipped);
-const PASS = .6;
-const needed = it => Math.ceil(qCount(it) * PASS);
-const passed = it => { const d = S.done[it.id]; if (!d) return false; if (d.skipped || d.mission) return true; return (d.best || 0) >= needed(it) };
-const isClosed = it => passed(it);
-function nextItem() { return FLAT.find(it => !isClosed(it)) }
-function unlocked(i) { return i === 0 || isClosed(FLAT[i - 1]) || !!S.done[FLAT[i].id] }
-// Progresso = acertos (melhor tentativa de cada passo) sobre o total de exercícios da trilha
-function progress() {
-  let tot = 0, ok = 0, feitos = 0;
-  FLAT.forEach(it => { const n = qCount(it); if (!n) return; tot += n; const d = S.done[it.id]; if (d && !d.skipped) { ok += d.best || 0; feitos += d.total || 0 } });
-  return { tot, ok, feitos };
+/* ================= progresso: rodadas de revisão espaçada ================= */
+// Cada assunto com exercícios passa por 3 rodadas: Aprender (60%) → Revisão após 1h (70%) → Fixação após 8h (80%).
+const MIN = 60e3, HOUR = 3600e3;
+const WAIT = [0, 1 * HOUR, 8 * HOUR];
+const PASSR = [.6, .7, .8];
+const RNAME = ['Aprender', 'Revisão', 'Fixação'];
+const now = () => Date.now();
+const hasRounds = it => !it.type && it.qs && it.qs.length;
+const rounds = it => hasRounds(it) ? 3 : 1;
+const rec = it => S.done[it.id];
+const lvl = it => (rec(it) && rec(it).r) || 0;
+const closed = it => lvl(it) >= 1 || !!(rec(it) && rec(it).skipped);
+function dueAt(it) { const d = rec(it), L = lvl(it); if (!d || L < 1 || L >= rounds(it) || !d.at || !d.at[L - 1]) return null; return d.at[L - 1] + WAIT[L] }
+const isDue = it => { const t = dueAt(it); return t !== null && now() >= t };
+const needed = (n, round) => Math.ceil(n * PASSR[round - 1]);
+function hhmm(t) { const d = new Date(t), td = new Date(); const h = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); return d.toDateString() === td.toDateString() ? 'às ' + h : (d.getDate() === new Date(td.getTime() + 864e5).getDate() ? 'amanhã às ' + h : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + h) }
+function inTime(ms) { const m = Math.round(ms / MIN); return m < 60 ? `em ${m} min` : `em ${Math.round(m / 60)} h` }
+
+function migrate() {
+  ['wrong', 'red', 'stats', 'mt', 'checks', 'bag', 'pi'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = k === 'stats' ? { ans: 0, ok: 0 } : {} });
+  if (S.stats.ans == null) S.stats = { ans: 0, ok: 0 };
+  FLAT.forEach(it => {
+    const d = S.done[it.id]; if (!d || d.r != null || d.skipped || d.mission) { if (d && d.mission && d.r == null) d.r = 1; return }
+    const n = it.qs ? it.qs.length : it.n || 0;
+    d.b = [d.best || 0]; d.at = [d.at || now()]; d.r = (d.best || 0) >= needed(n, 1) ? 1 : 0;
+  });
 }
+function nextAction() {
+  const dues = FLAT.filter(isDue).sort((a, b) => dueAt(a) - dueAt(b));
+  if (dues.length) return { it: dues[0], round: lvl(dues[0]) + 1, kind: 'review', more: dues.length - 1 };
+  const n = FLAT.find(it => !closed(it));
+  if (n) return { it: n, round: 1, kind: 'new' };
+  const pend = FLAT.filter(it => dueAt(it) !== null).sort((a, b) => dueAt(a) - dueAt(b));
+  if (pend.length) return { it: pend[0], round: lvl(pend[0]) + 1, kind: 'early' };
+  return null;
+}
+function unlocked(i) { return i === 0 || closed(FLAT[i - 1]) || !!rec(FLAT[i]) }
+function mastery() { let t = 0, d = 0; FLAT.forEach(it => { t += rounds(it); d += Math.min(lvl(it), rounds(it)) }); return { t, d, pct: Math.round(d / t * 100) } }
 const LEVELS = ['Aquecendo', 'Embalando', 'Focada', 'Imparável', 'Pronta pro ENEM'];
 function renderXP() {
-  const p = progress(), pct = p.tot ? Math.round(p.ok / p.tot * 100) : 0, lv = Math.min(4, Math.floor(pct / 20.01));
-  $('#xpb').style.width = pct + '%'; $('#xpn').textContent = `${p.ok}/${p.tot} acertos · ${pct}%`;
-  $('#lvl').textContent = 'Nível ' + (lv + 1) + ' · ' + LEVELS[lv];
+  const m = mastery(), lv = Math.min(4, Math.floor(m.pct / 20.01)), acc = S.stats.ans ? Math.round(S.stats.ok / S.stats.ans * 100) : 0;
+  $('#xpb').style.width = m.pct + '%';
+  $('#lvl').textContent = `Domínio ${m.pct}% · ${LEVELS[lv]}`;
+  $('#xpn').textContent = S.stats.ans ? `${acc}% de acertos` : 'Nenhum exercício ainda';
 }
 function qCount(it) { return it.type === 'sim' ? it.n : it.qs ? it.qs.length : 0 }
 function metaLine(it) {
   if (it.type === 'mission-redacao') return 'Missão · ≈ 1h20 no papel';
   if (it.type === 'mission-kit') return 'Checklist · 5 min';
-  return `≈ ${it.min} min · ${qCount(it)} exercícios`;
+  if (it.type === 'red-final') return 'Modelo comentado + corretor da sua redação';
+  return `≈ ${it.min} min · ${qCount(it)} exercícios` + (hasRounds(it) ? ' · 3 rodadas' : '');
 }
+function stars(L, R) { return `<span class="s-on">${'★'.repeat(L)}</span><span class="s-off">${'★'.repeat(Math.max(0, R - L))}</span>` }
 
 /* ================= início ================= */
 function renderHome() {
   $('#who').innerHTML = `${USER.emoji ? USER.emoji + ' ' : '👋 '}Oi, <b>${esc(S.name || USER.name)}</b>`;
   renderXP();
-  const nx = nextItem(), nb = $('#next');
-  if (nx) {
-    const idx = FLAT.indexOf(nx), A = AREAS[nx.area];
-    nb.innerHTML = `<div class="eyebrow">Seu próximo passo · ${idx + 1} de ${FLAT.length}</div>
-      <div class="title">${nx.title}</div>
-      <div class="meta"><span class="tag" style="background:${A.c}">${A.n}</span><span>${metaLine(nx)}</span><span>· ${TRAIL[nx.day].day}</span></div>
-      ${S.done[nx.id] && !S.done[nx.id].skipped ? `<p style="margin:0;font-weight:800;color:var(--bad)">Você acertou ${S.done[nx.id].best} de ${qCount(nx)}. Precisa de ${needed(nx)} para concluir.</p>` : ''}
-      <button class="btn primary big" id="go">${S.done[nx.id] ? 'Tentar de novo' : idx === 0 ? 'Começar agora' : 'Continuar'} →</button>`;
-    $('#go').onclick = () => openItem(nx);
+  const na = nextAction(), nb = $('#next');
+  const wrongN = Object.keys(S.wrong).filter(k => Q[k]).length;
+  const cadernoBtn = wrongN ? `<button class="btn" id="caderno" style="width:100%">📕 Caderno de erros · ${wrongN} ${wrongN === 1 ? 'questão' : 'questões'}</button>` : '';
+  if (na) {
+    const it = na.it, idx = FLAT.indexOf(it), A = AREAS[it.area], d = rec(it);
+    let eyebrow, extra = '', label;
+    if (na.kind === 'review') {
+      eyebrow = `Revisão na hora certa · rodada ${na.round} de 3`;
+      extra = `<p style="margin:0;font-weight:700">Você estudou isso ${hhmm(d.at[na.round - 2])}. Revisar agora é o que fixa na memória.${na.more ? ` <span class="muted">+${na.more} ${na.more > 1 ? 'revisões' : 'revisão'} esperando.</span>` : ''}</p>`;
+      label = 'Revisar agora ↻';
+    } else if (na.kind === 'new') {
+      eyebrow = `Seu próximo passo · ${idx + 1} de ${FLAT.length}`;
+      if (d && !closed(it)) extra = `<p style="margin:0;font-weight:800;color:var(--bad)">Você acertou ${(d.b && d.b[0]) || 0} de ${qCount(it)}. Precisa de ${needed(qCount(it), 1)} para concluir.</p>`;
+      label = d ? 'Tentar de novo →' : idx === 0 ? 'Começar agora →' : 'Continuar →';
+    } else {
+      eyebrow = 'Tudo em dia ✓';
+      extra = `<p style="margin:0;font-weight:700">A próxima revisão é ${hhmm(dueAt(it))}. Descanse, ou adiante se quiser.</p>`;
+      label = 'Revisar antes da hora';
+    }
+    nb.innerHTML = `<div class="eyebrow">${eyebrow}</div><div class="title">${it.title}</div>
+      <div class="meta"><span class="tag" style="background:${A.c}">${A.n}</span><span>${na.kind === 'new' ? metaLine(it) : RNAME[na.round - 1] + ' · ' + qCount(it) + ' exercícios · precisa de ' + Math.round(PASSR[na.round - 1] * 100) + '%'}</span></div>
+      ${extra}<button class="btn primary big" id="go">${label}</button>${cadernoBtn}`;
+    $('#go').onclick = () => openItem(it, na.round);
   } else {
-    nb.innerHTML = `<div class="eyebrow">Trilha completa</div><div class="title">Você fez tudo! 🎉</div><p style="margin:0" class="muted">Refaça os passos em que ganhou menos estrelas. E durma bem antes da prova.</p>`;
+    nb.innerHTML = `<div class="eyebrow">Trilha dominada</div><div class="title">Você fez as 3 rodadas de tudo! 🎉</div><p style="margin:0" class="muted">Agora é treinar redação no papel e refazer os simulados.</p>${cadernoBtn}`;
   }
+  if ($('#caderno')) $('#caderno').onclick = openCaderno;
+
   const tr = $('#trail'); tr.innerHTML = '';
-  TRAIL.forEach((d) => {
+  TRAIL.forEach(dd => {
     const sec = document.createElement('div'); sec.className = 'day';
-    const closed = d.items.filter(isClosed).length;
-    sec.innerHTML = `<div><div class="eyebrow">${d.day} · ${closed}/${d.items.length}</div><h2>${d.sub}</h2></div><div class="path"></div>`;
+    const ok = dd.items.filter(closed).length;
+    sec.innerHTML = `<div><div class="eyebrow">${dd.day} · ${ok}/${dd.items.length}</div><h2>${dd.sub}</h2></div><div class="path"></div>`;
     const path = sec.querySelector('.path');
-    d.items.forEach(it => {
-      const i = FLAT.indexOf(it), dn = S.done[it.id], cur = it === nx, open = unlocked(i), pz = passed(it);
-      const b = document.createElement('button'); b.className = 'step' + (pz ? (dn.skipped ? ' skip' : ' done') : '') + (cur ? ' cur' : '') + (!open ? ' lock' : '');
-      const dot = pz ? (dn.skipped ? '↷' : '✓') : (open ? (i + 1) : '🔒');
-      const n = qCount(it), pass = passed(it);
-      const sub = !dn ? metaLine(it) : dn.skipped ? 'Pulado · toque para fazer' : !n ? 'Feito ✓' : pass ? `${stars(dn.best, n)} ${dn.best}/${n} acertos · toque para refazer` : `${dn.best}/${n} acertos · precisa de ${needed(it)} para concluir`;
+    dd.items.forEach(it => {
+      const i = FLAT.indexOf(it), d = rec(it), L = lvl(it), R = rounds(it), open = unlocked(i), due = isDue(it), cur = na && na.it === it;
+      const full = L >= R && !(d && d.skipped);
+      const b = document.createElement('button');
+      b.className = 'step' + (full ? ' done full' : L >= 1 ? ' done' : d && d.skipped ? ' skip' : '') + (cur || due ? ' cur' : '') + (!open ? ' lock' : '');
+      const dot = full ? (R > 1 ? '★' : '✓') : due ? '↻' : L >= 1 ? '✓' : d && d.skipped ? '↷' : open ? (i + 1) : '🔒';
+      let sub;
+      if (!d) sub = metaLine(it);
+      else if (d.skipped) sub = 'Pulado · toque para fazer';
+      else if (R === 1) sub = L ? 'Feito ✓ · toque para refazer' : `${(d.b && d.b[0]) || 0}/${qCount(it)} · precisa de ${needed(qCount(it), 1)}`;
+      else if (L === 0) sub = `${(d.b && d.b[0]) || 0}/${qCount(it)} acertos · precisa de ${needed(qCount(it), 1)} para concluir`;
+      else if (L >= R) sub = `<span class="st">${stars(3, 3)}</span> Dominado · 3 rodadas feitas`;
+      else sub = `<span class="st">${stars(L, R)}</span> Rodada ${L}/3 · ${due ? '<b style="color:var(--ink)">revisão disponível agora</b>' : 'próxima revisão ' + hhmm(dueAt(it))}`;
       b.innerHTML = `<span class="dot">${dot}</span><span class="txt"><b>${it.title}</b><small>${sub}</small></span>`;
-      b.onclick = () => open ? openItem(it) : toast('Termine o passo ' + i + ' primeiro 😉');
+      b.onclick = () => {
+        if (!open) return toast('Termine o passo ' + i + ' primeiro 😉');
+        const round = L >= 1 && L < R ? L + 1 : L >= R ? R : 1;
+        openItem(it, round);
+      };
       path.appendChild(b);
     });
     tr.appendChild(sec);
   });
 }
-function stars(b, t) { const p = t ? b / t : 1; const n = p >= .9 ? 3 : p >= .6 ? 2 : p > 0 ? 1 : 0; return '★'.repeat(n) + '☆'.repeat(3 - n) }
 
 /* ================= lição (player) ================= */
-let L = null; // { it, steps, i, score, answers }
+let L = null; // { it, round, steps, i, score }
 let sinceBreak = 0;
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]] } return a }
-function buildSteps(it) {
+const qStep = id => ({ t: 'q', id, opts: shuffle(Q[id].o.map((o, k) => ({ o, ok: k === 0 }))) });
+function flashFrom(it) {
+  const out = [];
+  (it.learn || []).forEach(c => c.b.forEach(x => { const m = x.match(/^<b>([^<]{2,30})<\/b>\s*[:–-]?\s*(.{6,})$/); if (m && !/[.!]$/.test(m[1].trim())) out.push({ f: m[1].replace(/[:.]$/, ''), back: m[2], h: c.h }) }));
+  return shuffle(out).slice(0, 4);
+}
+function buildSteps(it, round) {
   if (it.type === 'mission-redacao') return [{ t: 'redacao' }];
   if (it.type === 'mission-kit') return [{ t: 'kit' }];
-  let qs = it.qs;
-  if (it.type === 'sim') { const pool = Object.keys(Q).filter(k => it.from.some(p => k.startsWith(p))); qs = shuffle(pool).slice(0, it.n) }
+  if (it.type === 'red-final') return [{ t: 'rfintro' }, { t: 'model', part: 'all' }, { t: 'review' }];
+  if (it.type === 'sim') { const pool = Object.keys(Q).filter(k => it.from.some(p => k.startsWith(p))); return [{ t: 'intro' }].concat(shuffle(pool).slice(0, it.n).map(qStep)) }
   const st = [];
-  if (it.type === 'sim') st.push({ t: 'intro' });
-  (it.learn || []).forEach((c, k) => st.push({ t: 'learn', c, k }));
-  if (it.builder) st.push({ t: 'builder' });
-  if (it.learn) st.push({ t: 'ready' });
-  qs.forEach(id => st.push({ t: 'q', id, opts: shuffle(Q[id].o.map((o, k) => ({ o, ok: k === 0 }))) }));
+  if (round === 1) {
+    (it.learn || []).forEach((c, k) => st.push({ t: 'learn', c, k }));
+    if (it.model) st.push({ t: 'model', part: it.model });
+    (it.write || []).forEach(p => st.push({ t: 'write', part: p }));
+    st.push({ t: 'ready' });
+    shuffle(it.qs).forEach(id => st.push(qStep(id)));
+  } else {
+    st.push({ t: 'rintro' });
+    if (round === 2) flashFrom(it).forEach(f => st.push({ t: 'flash', f }));
+    const wrongFirst = it.qs.filter(id => S.wrong[id]), rest = shuffle(it.qs.filter(id => !S.wrong[id]));
+    let qs = wrongFirst.concat(rest);
+    if (round === 3) { // mistura 2 questões de assuntos anteriores (intercalar ajuda a lembrar)
+      const others = FLAT.filter(x => x !== it && hasRounds(x) && closed(x)).flatMap(x => x.qs);
+      qs = shuffle(qs.concat(shuffle(others).slice(0, 2)));
+    }
+    qs.forEach(id => st.push(qStep(id)));
+  }
   return st;
 }
-function openItem(it) {
-  L = { it, steps: buildSteps(it), i: 0, score: 0, answered: false };
+function sessionQ() { return L.steps.filter(s => s.t === 'q').length }
+function openItem(it, round) {
+  L = { it, round: round || 1, steps: buildSteps(it, round || 1), i: 0, score: 0 };
+  $('#player').hidden = false; document.body.style.overflow = 'hidden';
+  try { history.pushState({ lesson: 1 }, '') } catch (e) {}
+  drawStep();
+}
+function openReplace(it, round) { clearInterval(tmr); tmr = null; L = { it, round: round || 1, steps: buildSteps(it, round || 1), i: 0, score: 0 }; drawStep() }
+function openCaderno() {
+  const ids = shuffle(Object.keys(S.wrong).filter(k => Q[k])).slice(0, 12);
+  if (!ids.length) return toast('Caderno vazio! 🎉');
+  L = { it: { id: 'caderno', title: 'Caderno de erros', area: 'geral' }, round: 1, caderno: true, steps: [{ t: 'cintro', n: ids.length }].concat(ids.map(qStep)), i: 0, score: 0, before: Object.keys(S.wrong).length };
   $('#player').hidden = false; document.body.style.overflow = 'hidden';
   try { history.pushState({ lesson: 1 }, '') } catch (e) {}
   drawStep();
@@ -217,41 +298,82 @@ addEventListener('popstate', () => { if (L) closePlayer(true) });
 $('#p-close').onclick = () => closePlayer(false);
 
 function foot(html) { $('#pfoot').innerHTML = html }
-function setBar() { const tot = L.steps.length + 1; $('#p-bar').style.width = Math.round(L.i / tot * 100) + '%' }
+function setBar() { $('#p-bar').style.width = Math.round(L.i / (L.steps.length + 1) * 100) + '%' }
+function adv() { L.i++; drawStep() }
 function drawStep() {
   setBar(); $('#pbody').scrollTop = 0;
   const P = $('#pinner'), st = L.steps[L.i], it = L.it, A = AREAS[it.area];
-  if (!st) return drawResult();
-  if (st.t === 'intro') {
-    P.innerHTML = `<div class="box sticker"><span class="eyebrow">Simulado</span><h2 style="font-size:1.6rem">${it.title}</h2>
-      <p style="margin:0">${it.n} questões sorteadas de tudo o que você estudou. Faça sem consultar, como na prova.</p>
-      <p style="margin:0" class="muted">Dica: conte uns 3 minutos por questão.</p></div>`;
-    foot(`<button class="btn primary big" id="nx">Começar simulado →</button>`); $('#nx').onclick = adv;
-  }
-  else if (st.t === 'learn') {
-    const n = (it.learn || []).length;
-    P.innerHTML = `<div class="eyebrow">Passo 1 · Aprenda ${n > 1 ? `(${st.k + 1} de ${n})` : ''}</div>
-      <article class="learn sticker"><header style="background:${A.c}"><h2>${st.c.h}</h2></header><ul>${st.c.b.map(x => `<li>${x}</li>`).join('')}</ul></article>
-      <p class="muted" style="margin:0;font-weight:700">Leia com calma. Se der, explique em voz alta sem olhar.</p>`;
-    foot(`<button class="btn primary big" id="nx">${st.k + 1 < n || it.builder ? 'Próximo →' : 'Entendi →'}</button>`); $('#nx').onclick = adv;
-  }
-  else if (st.t === 'builder') drawBuilder(P);
-  else if (st.t === 'ready') {
-    P.innerHTML = `<div class="result"><div style="font-size:3.4rem">🎯</div><h2 style="font-size:1.7rem">Agora é praticar</h2>
-      <p style="margin:0" class="muted">${qCount(it)} exercícios sobre o que você acabou de ler. Errou? Tudo bem: a explicação aparece na hora.</p></div>`;
-    foot(`<button class="btn primary big" id="nx">Bora! →</button><button class="link" id="bk">Reler o resumo</button>`);
-    $('#nx').onclick = adv; $('#bk').onclick = () => { L.i = 0; drawStep() };
-  }
-  else if (st.t === 'q') drawQ(P, st);
-  else if (st.t === 'redacao') drawRedacao(P);
-  else if (st.t === 'kit') drawKit(P);
+  if (!st) return L.caderno ? drawCadernoResult() : drawResult();
+  const T = {
+    intro() {
+      P.innerHTML = `<div class="box sticker"><span class="eyebrow">Simulado</span><h2 style="font-size:1.6rem">${it.title}</h2>
+        <p style="margin:0">${it.n} questões sorteadas de tudo o que você estudou. Faça sem consultar, como na prova.</p>
+        <p style="margin:0" class="muted">Dica: conte uns 3 minutos por questão.</p></div>`;
+      foot(`<button class="btn primary big" id="nx">Começar simulado →</button>`); $('#nx').onclick = adv;
+    },
+    cintro() {
+      P.innerHTML = `<div class="result sticker"><div style="font-size:3.4rem">📕</div><h2 style="font-size:1.6rem">Caderno de erros</h2>
+        <p style="margin:0">Aqui ficam as questões que você errou. Cada uma sai do caderno quando você acertar <b>2 vezes</b>.</p>
+        <p style="margin:0" class="muted">Hoje: ${st.n} questões.</p></div>`;
+      foot(`<button class="btn primary big" id="nx">Começar →</button>`); $('#nx').onclick = adv;
+    },
+    rintro() {
+      const d = rec(it), when = d.at[L.round - 2];
+      P.innerHTML = `<div class="result sticker"><div class="stars" style="color:var(--hum)">${stars(L.round - 1, 3)}</div>
+        <span class="eyebrow">Rodada ${L.round} de 3 · ${RNAME[L.round - 1]}</span><h2 style="font-size:1.6rem">${it.title}</h2>
+        <p style="margin:0">${L.round === 2 ? 'Você estudou isso há pouco. Primeiro tente lembrar sem olhar, depois responda os exercícios.' : 'Última rodada, sem resumo, como na prova. Tem também questões de outros assuntos misturadas.'}</p>
+        <p style="margin:0;font-weight:800">Para concluir: ${Math.round(PASSR[L.round - 1] * 100)}% de acerto.</p>
+        <p style="margin:0" class="muted">Primeira vez: ${hhmm(when)}.</p></div>`;
+      foot(`<button class="btn primary big" id="nx">Começar rodada ${L.round} →</button><button class="link" id="bk">Prefiro reler o resumo antes</button>`);
+      $('#nx').onclick = adv; $('#bk').onclick = () => { L.steps.splice(L.i + 1, 0, ...(it.learn || []).map((c, k) => ({ t: 'learn', c, k, re: true }))); adv() };
+    },
+    learn() {
+      const n = (it.learn || []).length;
+      P.innerHTML = `<div class="eyebrow">${st.re ? 'Releitura' : 'Passo 1 · Aprenda'} ${n > 1 ? `(${st.k + 1} de ${n})` : ''}</div>
+        <article class="learn sticker"><header style="background:${A.c}"><h2>${st.c.h}</h2></header><ul>${st.c.b.map(x => `<li>${x}</li>`).join('')}</ul></article>
+        <p class="muted" style="margin:0;font-weight:700">Leia com calma. Depois feche os olhos e tente explicar em voz alta.</p>`;
+      foot(`<button class="btn primary big" id="nx">${st.k + 1 < n ? 'Próximo →' : 'Entendi →'}</button>`); $('#nx').onclick = adv;
+    },
+    flash() {
+      const f = st.f;
+      P.innerHTML = `<div class="eyebrow">Lembra? · sem olhar</div>
+        <div class="box sticker flash"><span class="muted" style="font-weight:800">${esc(f.h)}</span>
+        <div style="font-family:var(--display);font-size:1.8rem;font-weight:800">${f.f}</div>
+        <p style="margin:0" class="muted">Diga em voz alta o que você lembra. Depois toque para conferir.</p>
+        <div id="back" hidden class="preview" style="font-size:1.05rem">${f.back}</div></div>`;
+      foot(`<button class="btn primary big" id="nx">Mostrar resposta</button>`);
+      $('#nx').onclick = () => {
+        $('#back').hidden = false;
+        foot(`<div style="display:flex;gap:10px;width:100%"><button class="btn big" id="no" style="flex:1">Não lembrei</button><button class="btn primary big" id="yes" style="flex:1">Lembrei ✓</button></div>`);
+        $('#yes').onclick = adv; $('#no').onclick = () => { toast('Sem problema: ela volta na próxima rodada.'); adv() };
+      };
+    },
+    ready() {
+      P.innerHTML = `<div class="result"><div style="font-size:3.4rem">🎯</div><h2 style="font-size:1.7rem">Agora é praticar</h2>
+        <p style="margin:0" class="muted">${sessionQ()} exercícios sobre o que você acabou de ver. Errou? A explicação aparece na hora, e a questão vai para o seu caderno de erros.</p></div>`;
+      foot(`<button class="btn primary big" id="nx">Bora! →</button><button class="link" id="bk">Reler o resumo</button>`);
+      $('#nx').onclick = adv; $('#bk').onclick = () => { L.i = 0; drawStep() };
+    },
+    q() { drawQ(P, st) },
+    model() { drawModel(P, st.part) },
+    write() { drawWrite(P, st.part) },
+    rfintro() {
+      P.innerHTML = `<div class="result sticker"><div style="font-size:3.4rem">✍️</div><h2 style="font-size:1.6rem">Juntando tudo</h2>
+        <p style="margin:0">Primeiro você vê uma redação modelo inteira, com cada parte marcada. Depois o app junta os parágrafos que <b>você</b> escreveu e confere com o corretor automático.</p></div>`;
+      foot(`<button class="btn primary big" id="nx">Ver a redação modelo →</button>`); $('#nx').onclick = adv;
+    },
+    review() { drawReview(P) },
+    redacao() { drawRedacao(P) },
+    kit() { drawKit(P) }
+  };
+  T[st.t]();
 }
-function adv() { L.i++; drawStep() }
 
 function drawQ(P, st) {
-  const q = Q[st.id], qi = L.steps.filter(s => s.t === 'q').indexOf(st), qt = qCount(L.it);
+  const q = Q[st.id], all = L.steps.filter(s => s.t === 'q'), qi = all.indexOf(st), qt = all.length;
   let sel = null;
-  P.innerHTML = `<div class="eyebrow">${L.it.type === 'sim' ? 'Simulado' : 'Passo 2 · Pratique'} · questão ${qi + 1} de ${qt}</div>
+  const label = L.caderno ? 'Caderno de erros' : L.it.type === 'sim' ? 'Simulado' : L.round > 1 ? `Rodada ${L.round} · ${RNAME[L.round - 1]}` : 'Passo 2 · Pratique';
+  P.innerHTML = `<div class="eyebrow">${label} · questão ${qi + 1} de ${qt}</div>
     <div class="qtext">${q.q}</div>
     <div class="opts">${st.opts.map((o, i) => `<button class="opt" data-i="${i}"><b>${'ABCD'[i]}</b><span>${o.o}</span></button>`).join('')}</div>
     <div id="fb"></div>`;
@@ -261,83 +383,166 @@ function drawQ(P, st) {
   $('#nx').onclick = () => {
     if (sel === null) return;
     const ok = st.opts[sel].ok; if (ok) L.score++;
+    S.stats.ans++; if (ok) S.stats.ok++;
+    if (!ok) S.wrong[st.id] = 2; else if (S.wrong[st.id]) { S.wrong[st.id]--; if (S.wrong[st.id] <= 0) delete S.wrong[st.id] }
+    save();
     opts.forEach((x, i) => { x.disabled = true; x.classList.remove('sel'); if (st.opts[i].ok) x.classList.add('right'); else if (i === sel) x.classList.add('wrong') });
-    $('#fb').innerHTML = `<div class="feedback ${ok ? 'ok' : 'no'}"><b>${ok ? 'Isso aí! ✅' : 'Quase! A certa está em verde.'}</b><br>${q.e}</div>`;
+    $('#fb').innerHTML = `<div class="feedback ${ok ? 'ok' : 'no'}"><b>${ok ? 'Isso aí! ✅' : 'Quase! A certa está em verde. Ela foi para o caderno de erros.'}</b><br>${q.e}</div>`;
     $('#fb').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     foot(`<button class="btn primary big" id="nx2">${qi + 1 < qt ? 'Próxima →' : 'Ver resultado →'}</button>`); $('#nx2').onclick = adv; $('#nx2').focus();
   };
 }
 
-function finish(best, total, extra) {
-  const prev = S.done[L.it.id];
-  const rec = { best: Math.max(best, prev && !prev.skipped ? prev.best || 0 : 0), total, last: best, tries: ((prev && prev.tries) || 0) + 1, at: Date.now() };
-  S.done[L.it.id] = Object.assign(rec, extra || {}); save(); sinceBreak++;
+function record(it, round, score, total, pass, extra) {
+  const d = S.done[it.id] || { r: 0, at: [], b: [], tries: 0 };
+  d.tries = (d.tries || 0) + 1; d.b = d.b || []; d.at = d.at || [];
+  d.b[round - 1] = Math.max(d.b[round - 1] || 0, score); d.total = total;
+  if (d.skipped) delete d.skipped;
+  if (pass && round > (d.r || 0)) { d.r = round; d.at[round - 1] = now() }
+  Object.assign(d, extra || {});
+  S.done[it.id] = d; save(); sinceBreak++;
 }
+function nextButton() {
+  const na = nextAction(); if (!na || na.kind === 'early') return '';
+  return `<button class="btn primary big" id="nxa">${na.kind === 'review' ? 'Revisão: ' : 'Próximo passo: '}${na.it.title} →</button>`;
+}
+function bindNext() { const b = $('#nxa'); if (b) b.onclick = () => { const na = nextAction(); openReplace(na.it, na.round) } }
 function drawResult() {
-  const it = L.it, tot = qCount(it), sc = L.score, pct = tot ? sc / tot : 1, need = needed(it), ok = sc >= need;
-  finish(sc, tot); $('#p-bar').style.width = '100%';
-  if (ok) confetti();
-  const nx = ok ? nextItem() : null;
-  const msg = !ok ? `Para concluir este passo, acerte pelo menos ${need} de ${tot}. Releia o resumo e tente de novo: você consegue!` : pct >= .9 ? 'Arrasou! Passo concluído. 🔥' : 'Passo concluído! Leia as explicações das que errou.';
-  const pause = sinceBreak >= 2 && nx;
-  $('#pinner').innerHTML = `<div class="result sticker"><div class="eyebrow">${it.title}</div><div class="stars">${stars(sc, tot)}</div>
-    <div class="big">${sc}/${tot}</div><p style="margin:0;font-weight:800">${msg}</p><span class="tag" style="background:${ok ? 'var(--ok)' : 'var(--bad)'}">${ok ? '✓ Concluído' : 'Ainda não concluído'}</span></div>
-    ${pause ? `<div class="box sticker" id="pausebox"><h3>Hora da pausa ☕</h3><p style="margin:0">Você já fez ${sinceBreak} passos seguidos. Levante, beba água e fique 5 minutos longe da tela.</p><div class="clock" id="pclock">05:00</div><button class="btn" id="pstart">Iniciar pausa de 5 min</button></div>` : ''}`;
-  foot(`${!ok ? `<button class="btn primary big" id="redo">${it.learn ? 'Reler o resumo e refazer' : 'Refazer'} ↻</button>` : nx ? `<button class="btn primary big" id="nx">Próximo passo: ${nx.title} →</button>` : `<button class="btn primary big" id="home">Voltar ao início</button>`}
-    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">${ok ? '<button class="link" id="redo">Refazer para melhorar</button>' : ''}<button class="link" id="tohome">Voltar ao início</button></div>`);
-  if ($('#nx')) $('#nx').onclick = () => { clearInterval(tmr); openReplace(nx) };
+  const it = L.it, tot = sessionQ(), sc = L.score, round = it.type === 'sim' ? 1 : L.round;
+  const need = Math.ceil(tot * (it.type === 'sim' ? .6 : PASSR[round - 1])), pass = sc >= need;
+  record(it, round, sc, tot, pass); $('#p-bar').style.width = '100%';
+  if (pass) confetti();
+  let msg, tag;
+  if (!pass) { msg = `Para concluir a rodada ${round}, acerte pelo menos ${need} de ${tot}. As que você errou foram para o caderno de erros.`; tag = `<span class="tag" style="background:var(--bad)">Ainda não concluída</span>` }
+  else if (rounds(it) > 1 && round < 3) { const t = now() + WAIT[round]; msg = `Rodada ${round} de 3 concluída! A próxima revisão abre ${inTime(WAIT[round])} (${hhmm(t)}). Enquanto isso, siga a trilha.`; tag = `<span class="tag" style="background:var(--ok)">✓ ${RNAME[round - 1]}</span>` }
+  else if (rounds(it) > 1) { msg = 'Assunto dominado! Você passou pelas 3 rodadas. 🧠'; tag = `<span class="tag" style="background:var(--hum)">★★★ Dominado</span>` }
+  else { msg = sc / tot >= .9 ? 'Arrasou! 🔥' : 'Passo concluído! Leia as explicações das que errou.'; tag = `<span class="tag" style="background:var(--ok)">✓ Concluído</span>` }
+  const pause = pass && sinceBreak >= 2;
+  $('#pinner').innerHTML = `<div class="result sticker"><div class="eyebrow">${it.title}${rounds(it) > 1 ? ' · rodada ' + round : ''}</div>
+    ${rounds(it) > 1 ? `<div class="stars" style="color:var(--hum)">${stars(lvl(it), 3)}</div>` : ''}
+    <div class="big">${sc}/${tot}</div><p style="margin:0;font-weight:800">${msg}</p>${tag}</div>
+    ${pause ? `<div class="box sticker"><h3>Hora da pausa ☕</h3><p style="margin:0">Você fez ${sinceBreak} passos seguidos. Levante, beba água e fique 5 minutos longe da tela. Pausa também ajuda a memória.</p><div class="clock" id="pclock">05:00</div><button class="btn" id="pstart">Iniciar pausa de 5 min</button></div>` : ''}`;
+  foot(`${!pass ? `<button class="btn primary big" id="redo">${it.learn ? 'Reler o resumo e refazer' : 'Refazer'} ↻</button>` : nextButton() || '<button class="btn primary big" id="home">Voltar ao início</button>'}
+    <button class="link" id="tohome">Voltar ao início</button>`);
+  bindNext();
   if ($('#home')) $('#home').onclick = () => closePlayer(false);
   $('#tohome').onclick = () => closePlayer(false);
-  if ($('#redo')) $('#redo').onclick = () => openReplace(it);
-  if ($('#pstart')) $('#pstart').onclick = () => { sinceBreak = 0; startTimer(300, $('#pclock'), () => { beep(); toast('Pausa acabou! Bora pro próximo 💪') }); $('#pstart').hidden = true };
+  if ($('#redo')) $('#redo').onclick = () => { if (round > 1) { openReplace(it, round); L.steps.splice(1, 0, ...(it.learn || []).map((c, k) => ({ t: 'learn', c, k, re: true }))); drawStep() } else openReplace(it, 1) };
+  if ($('#pstart')) $('#pstart').onclick = () => { sinceBreak = 0; startTimer(300, $('#pclock'), () => { beep(); toast('Pausa acabou! Bora 💪') }); $('#pstart').hidden = true };
 }
-function openReplace(it) { L = { it, steps: buildSteps(it), i: 0, score: 0 }; drawStep() }
+function drawCadernoResult() {
+  const tot = sessionQ(), sc = L.score, left = Object.keys(S.wrong).length, out = Math.max(0, L.before - left);
+  $('#p-bar').style.width = '100%'; if (sc / tot >= .7) confetti();
+  $('#pinner').innerHTML = `<div class="result sticker"><div style="font-size:3rem">📕</div><div class="big">${sc}/${tot}</div>
+    <p style="margin:0;font-weight:800">${out ? `${out} ${out === 1 ? 'questão saiu' : 'questões saíram'} do caderno!` : 'Continue: cada questão sai quando você acertar 2 vezes.'}</p>
+    <p style="margin:0" class="muted">Ainda no caderno: ${left}.</p></div>`;
+  foot(`${left ? '<button class="btn primary big" id="again">Treinar de novo ↻</button>' : ''}${nextButton()}<button class="link" id="tohome">Voltar ao início</button>`);
+  if ($('#again')) $('#again').onclick = () => { closePlayer(false); setTimeout(openCaderno, 50) };
+  bindNext(); $('#tohome').onclick = () => closePlayer(false);
+}
 
 /* --- timer --- */
 let tmr = null;
 const fmt = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
-function startTimer(sec, el, done) { clearInterval(tmr); let left = sec; el.textContent = fmt(left); tmr = setInterval(() => { left--; el.textContent = fmt(Math.max(0, left)); if (left <= 0) { clearInterval(tmr); tmr = null; done && done() } }, 1000) }
+function startTimer(sec, el, done) { clearInterval(tmr); let left = sec; el.textContent = fmt(left); tmr = setInterval(() => { left--; if (!el.isConnected) { clearInterval(tmr); return } el.textContent = fmt(Math.max(0, left)); if (left <= 0) { clearInterval(tmr); tmr = null; done && done() } }, 1000) }
 function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)();[0, .3, .6].forEach(t => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.15, a.currentTime + t); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + t + .25); o.start(a.currentTime + t); o.stop(a.currentTime + t + .25) }) } catch (e) {} }
 
-/* --- montador da proposta de intervenção --- */
-function drawBuilder(P) {
-  const F = [['ag', 'Agente (quem faz?)', 'o Ministério da Educação'], ['ac', 'Ação (o que faz?)', 'criar campanhas de conscientização nas escolas'], ['mo', 'Modo/meio (como?)', 'por meio de palestras e oficinas mensais'], ['de', 'Detalhamento (explique um item)', 'conduzidas por psicólogos e assistentes sociais'], ['fi', 'Finalidade (para quê?)', 'reduzir o problema entre os jovens']];
-  const v = Object.assign({}, S.pi);
-  P.innerHTML = `<div class="eyebrow">Passo 1 · Monte sua proposta</div>
-    <div class="box sticker"><h2 style="font-size:1.35rem">A proposta de intervenção</h2>
-    <p style="margin:0" class="muted">É o fim da conclusão e vale até 200 pontos. Ela tem 5 peças. Troque os exemplos e veja a frase se montar.</p>
-    ${F.map(([k, l, ex]) => `<label class="f" for="pi-${k}">${l}<input type="text" id="pi-${k}" value="${esc(v[k] != null ? v[k] : ex)}"></label>`).join('')}
-    <div class="preview" id="pi-out"></div></div>`;
-  const out = () => {
-    const g = k => esc(($('#pi-' + k).value || '…').trim());
-    $('#pi-out').innerHTML = `Portanto, cabe a <mark>${g('ag')}</mark> <mark>${g('ac')}</mark>, <mark>${g('mo')}</mark>, <mark>${g('de')}</mark>, a fim de <mark>${g('fi')}</mark>.`;
-    F.forEach(([k]) => S.pi[k] = $('#pi-' + k).value);
+/* ================= redação ================= */
+const R = window.REDACAO;
+function legendHTML(parts) {
+  const keys = parts === 'concl' ? ['con', 'rep', 'ag', 'ac', 'mo', 'de', 'fi'] : parts === 'all' ? R.LEGEND.map(x => x[0]) : ['rep', 'tese', 'arg', 'con'];
+  return `<div class="legend">${R.LEGEND.filter(x => keys.includes(x[0])).map(([k, n]) => `<span class="h-${k}">${n}</span>`).join('')}</div>`;
+}
+function modelHTML(part) {
+  const ps = part === 'all' ? ['intro', 'd1', 'd2', 'concl'] : [part];
+  return `<div class="essay marks">${ps.map(p => `<p>${R.MODEL[p]}</p>`).join('')}</div>`;
+}
+function drawModel(P, part) {
+  const names = { intro: 'a introdução', d1: 'o 1º parágrafo de desenvolvimento', concl: 'a conclusão', all: 'a redação inteira' };
+  P.innerHTML = `<div class="eyebrow">Veja um modelo</div>
+    <div class="box sticker"><h2 style="font-size:1.3rem">Como fica ${names[part]}</h2>
+    <p style="margin:0" class="muted">Tema: "${R.MODEL_TEMA}"</p>
+    ${legendHTML(part)}${modelHTML(part)}
+    <label class="check" style="background:none;padding:0"><input type="checkbox" id="mk" checked><span>Mostrar marcações</span></label></div>
+    ${part === 'all' ? `<div class="box sticker"><h3>Por que essa redação vai bem</h3><ul>${R.WHY.map(w => `<li>${w}</li>`).join('')}</ul></div>` : `<p class="muted" style="margin:0;font-weight:700">Repare nas cores: cada parte tem uma função. Agora é a sua vez, com outro tema.</p>`}`;
+  $('#mk').onchange = e => P.querySelector('.essay').classList.toggle('marks', e.target.checked);
+  foot(`<button class="btn primary big" id="nx">${part === 'all' ? 'Agora a minha redação →' : 'Escrever a minha →'}</button>`); $('#nx').onclick = adv;
+}
+function drawWrite(P, part) {
+  const def = R.PARTS[part], v = S.red[part] = S.red[part] || {};
+  P.innerHTML = `<div class="eyebrow">Sua vez · escreva</div>
+    <div class="box sticker"><h2 style="font-size:1.3rem">${def.title}</h2>
+    <p style="margin:0"><b>Tema da sua redação:</b> "${R.MY_TEMA}"</p>
+    <p style="margin:0" class="muted">Escreva uma frase em cada campo. O exemplo cinza é só uma ideia: escreva com suas palavras.</p></div>
+    ${def.fields.map(f => `<label class="f wfield" for="w-${f.k}">${f.l}${f.pre ? `<span class="pre">começa com "${f.pre} ..."</span>` : ''}<textarea id="w-${f.k}" rows="${f.k === 'ag' ? 1 : 3}" placeholder="${esc(f.ph)}">${esc(v[f.k] || '')}</textarea></label>`).join('')}
+    <div class="box sticker"><span class="eyebrow">Seu parágrafo até agora</span><div class="essay" id="wprev"></div></div>
+    <button class="link" id="wex" style="align-self:flex-start">Ver como ficou no modelo</button><div id="wmodel" hidden></div>`;
+  const min = 8;
+  const upd = () => {
+    def.fields.forEach(f => v[f.k] = $('#w-' + f.k).value.trim());
+    $('#wprev').textContent = R.partText(part, v) || '…';
+    const ok = def.fields.filter(f => (v[f.k] || '').length >= (f.k === 'ag' ? 3 : min)).length;
+    $('#nx').disabled = ok < def.fields.length;
+    $('#nx').textContent = ok < def.fields.length ? `Preencha todos (${ok}/${def.fields.length})` : 'Pronto, salvar →';
   };
-  F.forEach(([k]) => $('#pi-' + k).addEventListener('input', out)); out();
-  foot(`<button class="btn primary big" id="nx">Ficou pronta →</button>`); $('#nx').onclick = () => { save(); adv() };
+  foot(`<button class="btn primary big" id="nx" disabled></button>`);
+  def.fields.forEach(f => $('#w-' + f.k).addEventListener('input', () => { upd(); clearTimeout(drawWrite.t); drawWrite.t = setTimeout(save, 800) }));
+  $('#wex').onclick = () => { const m = $('#wmodel'); m.hidden = !m.hidden; if (!m.hidden) m.innerHTML = `<div class="box sticker">${legendHTML(part === 'd2' ? 'd1' : part)}${modelHTML(part)}</div>` };
+  upd();
+  $('#nx').onclick = () => { save(); toast('Parágrafo salvo ✍️'); adv() };
 }
-
-/* --- missão: redação --- */
+function essayFromParts() { return ['intro', 'd1', 'd2', 'concl'].map(p => R.partText(p, S.red[p] || {})).filter(Boolean).join('\n\n') }
+function checksHTML(text) {
+  const c = R.check(text), okN = c.filter(x => x.ok).length;
+  return `<div class="eyebrow">Corretor automático · ${okN} de ${c.length} itens ok</div><div class="checks">${c.map(x => `<div class="ck ${x.ok ? 'ok' : 'no'}"><span>${x.ok ? '✓' : '!'}</span><div><b>${x.l}</b><small>${x.d}</small></div></div>`).join('')}</div>`;
+}
+function copyText(text, btn) {
+  const done = () => { const o = btn.textContent; btn.textContent = 'Copiado ✓'; setTimeout(() => btn.textContent = o, 1400) };
+  try { navigator.clipboard.writeText(text).then(done, done) } catch (e) { done() }
+}
+function drawReview(P) {
+  const text = S.red.full || essayFromParts();
+  P.innerHTML = `<div class="eyebrow">A sua redação</div>
+    <div class="box sticker"><h2 style="font-size:1.3rem">"${R.MY_TEMA}"</h2>
+    <p style="margin:0" class="muted">O app juntou seus parágrafos. Melhore o texto aqui mesmo: o corretor confere enquanto você digita. Deixe uma linha em branco entre os parágrafos.</p>
+    <textarea id="full" rows="16">${esc(text)}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" id="cp">Copiar texto</button><button class="btn small" id="rs">Juntar de novo os parágrafos</button></div></div>
+    <div class="box sticker" id="cks"></div>
+    <p class="muted" style="margin:0;font-weight:700">O corretor pega erros comuns, mas não dá nota. Para treinar de verdade, passe a limpo no papel em até 30 linhas.</p>`;
+  const upd = () => { $('#cks').innerHTML = checksHTML($('#full').value) };
+  $('#full').addEventListener('input', () => { S.red.full = $('#full').value; upd(); clearTimeout(drawReview.t); drawReview.t = setTimeout(save, 800) });
+  $('#cp').onclick = e => copyText($('#full').value, e.target);
+  $('#rs').onclick = () => { delete S.red.full; $('#full').value = essayFromParts(); upd(); save() };
+  upd();
+  foot(`<button class="btn primary big" id="nx">Concluir ✓</button>`);
+  $('#nx').onclick = () => { save(); missionDone('Você escreveu sua primeira redação completa no método! Agora é treinar no papel. ✍️') };
+}
 function drawRedacao(P) {
-  const C = ['Tem entre 25 e 30 linhas', 'Introdução com repertório e tese', 'Dois parágrafos de argumento, cada um com um exemplo', 'Conectivos no começo dos parágrafos', 'Conclusão com os 5 elementos da proposta', 'Reli e corrigi acentos e concordância'];
-  const ck = S.checks['red'] || {};
-  P.innerHTML = `<div class="eyebrow">Missão · no papel</div>
-    <div class="box sticker"><h2 style="font-size:1.4rem">Escreva uma redação completa</h2>
-      <p style="margin:0">Tema de treino:</p>
-      <p style="margin:0;font-family:var(--display);font-size:1.25rem;font-weight:700">"Desafios para combater a desinformação no Brasil"</p>
-      <ol><li>Pegue papel e caneta. Celular só para o cronômetro.</li><li>15 min de rascunho com a planta de 4 parágrafos.</li><li>Escreva em 1h e passe a limpo.</li></ol>
-      <div class="clock" id="rclock">80:00</div>
-      <button class="btn primary" id="rstart">Iniciar cronômetro de 1h20</button>
-    </div>
-    <div class="box sticker"><h3>Quando terminar, confira:</h3><div id="rchecks" style="display:flex;flex-direction:column;gap:8px">
-      ${C.map((c, i) => `<label class="check"><input type="checkbox" id="rc-${i}" ${ck[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;
-  $('#rstart').onclick = () => { startTimer(80 * 60, $('#rclock'), () => { beep(); toast('Tempo! Hora de conferir a redação.') }); $('#rstart').hidden = true };
-  C.forEach((_, i) => $('#rc-' + i).onchange = e => { ck[i] = e.target.checked; S.checks['red'] = ck; save() });
+  const C = ['Tem entre 25 e 30 linhas', 'Introdução com repertório e tese', 'Dois parágrafos de argumento, cada um com explicação e prova', 'Conectivo no começo de cada parágrafo', 'Conclusão com agente, ação, meio, detalhamento e finalidade', 'Reli e corrigi acentos e concordância'];
+  const id = L.it.id, ck = S.checks[id] = S.checks[id] || {};
+  if (S.mt[id] == null) S.mt[id] = id === 'm-redacao' ? 7 : 1;
+  const draw = () => {
+    P.innerHTML = `<div class="eyebrow">Missão · no papel, como na prova</div>
+      <div class="box sticker"><span class="muted" style="font-weight:800">Seu tema:</span>
+        <p style="margin:0;font-family:var(--display);font-size:1.3rem;font-weight:700">"${R.TEMAS[S.mt[id]]}"</p>
+        <button class="link" id="sort" style="align-self:flex-start">🎲 Sortear outro tema</button>
+        <ol><li>Papel e caneta. Celular só para o cronômetro.</li><li>15 min: sublinhe as palavras-chave e faça o rascunho (problema, 2 causas, proposta).</li><li>50 min: escreva os 4 parágrafos.</li><li>15 min: passe a limpo e confira.</li></ol>
+        <div class="clock" id="rclock">80:00</div><button class="btn primary" id="rstart">Iniciar cronômetro de 1h20</button></div>
+      <div class="box sticker"><h3>Quer o corretor automático?</h3><p style="margin:0" class="muted">Digite sua redação aqui (opcional). Pule uma linha entre os parágrafos.</p>
+        <textarea id="mtext" rows="10" placeholder="Digite ou cole aqui…">${esc((S.red.m && S.red.m[id]) || '')}</textarea><div id="mcks"></div></div>
+      <div class="box sticker"><h3>Confira antes de terminar</h3><div style="display:flex;flex-direction:column;gap:8px">
+        ${C.map((c, i) => `<label class="check"><input type="checkbox" id="rc-${i}" ${ck[i] ? 'checked' : ''}><span>${c}</span></label>`).join('')}</div></div>`;
+    $('#sort').onclick = () => { let n; do { n = Math.floor(Math.random() * R.TEMAS.length) } while (n === S.mt[id]); S.mt[id] = n; save(); draw() };
+    $('#rstart').onclick = () => { startTimer(80 * 60, $('#rclock'), () => { beep(); toast('Tempo! Hora de conferir a redação.') }); $('#rstart').hidden = true };
+    const mu = () => { const t = $('#mtext').value; $('#mcks').innerHTML = t.trim().length > 30 ? '<div style="margin-top:10px">' + checksHTML(t) + '</div>' : '' };
+    $('#mtext').addEventListener('input', () => { S.red.m = S.red.m || {}; S.red.m[id] = $('#mtext').value; mu(); clearTimeout(drawRedacao.t); drawRedacao.t = setTimeout(save, 800) }); mu();
+    C.forEach((_, i) => $('#rc-' + i).onchange = e => { ck[i] = e.target.checked; save() });
+  };
+  draw();
   foot(`<button class="btn primary big" id="nx">Terminei a redação ✓</button><button class="link" id="sk">Fazer depois (pular por agora)</button>`);
-  $('#nx').onclick = () => missionDone('Redação feita! Isso é o treino que mais sobe a nota. ✍️');
-  $('#sk').onclick = () => { S.done[L.it.id] = { skipped: true, at: Date.now() }; save(); toast('Pulado. A missão continua na trilha.'); const nx = nextItem(); nx ? openReplace(nx) : closePlayer(false) };
+  $('#nx').onclick = () => missionDone('Redação feita! É o treino que mais sobe a nota. ✍️');
+  $('#sk').onclick = () => { S.done[L.it.id] = { skipped: true, at: [now()], r: 0 }; save(); toast('Pulado. A missão continua na trilha.'); const na = nextAction(); na && na.it !== L.it ? openReplace(na.it, na.round) : closePlayer(false) };
 }
-/* --- missão: kit da prova --- */
 function drawKit(P) {
   P.innerHTML = `<div class="eyebrow">Véspera · checklist</div>
     <div class="box sticker"><h2 style="font-size:1.4rem">Arrume a mochila agora</h2><div style="display:flex;flex-direction:column;gap:8px">
@@ -350,12 +555,10 @@ function drawKit(P) {
   $('#nx').onclick = () => missionDone('Mochila pronta! Agora janta leve e cama cedo. 😴');
 }
 function missionDone(msg) {
-  finish(0, 0, { mission: true }); confetti(); $('#p-bar').style.width = '100%'; clearInterval(tmr);
-  const nx = nextItem();
+  record(L.it, 1, 0, 0, true, { mission: true }); confetti(); $('#p-bar').style.width = '100%'; clearInterval(tmr);
   $('#pinner').innerHTML = `<div class="result sticker"><div style="font-size:3.4rem">🏅</div><div class="big" style="font-size:2.4rem">Missão cumprida</div><p style="margin:0;font-weight:800">${msg}</p><span class="tag" style="background:var(--ok)">✓ Concluído</span></div>`;
-  foot(`${nx ? `<button class="btn primary big" id="nx">Próximo passo: ${nx.title} →</button>` : ''}<button class="link" id="tohome">Voltar ao início</button>`);
-  if (nx) $('#nx').onclick = () => openReplace(nx);
-  $('#tohome').onclick = () => closePlayer(false);
+  foot(`${nextButton()}<button class="link" id="tohome">Voltar ao início</button>`);
+  bindNext(); $('#tohome').onclick = () => closePlayer(false);
 }
 
 /* ================= contagem ================= */
@@ -402,6 +605,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 /* ================= iniciar ================= */
 let ticking = null;
-function startApp() { show('home'); renderHome(); tick(); if (!ticking) ticking = setInterval(tick, 1000) }
+function startApp() { migrate(); show('home'); renderHome(); tick(); if (!ticking) ticking = setInterval(tick, 1000) }
 CLOUD ? bootCloud() : bootLocal();
 })();

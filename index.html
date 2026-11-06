@@ -154,6 +154,32 @@ label.f{display:flex;flex-direction:column;gap:5px;font-weight:800;font-size:.85
 .sheet ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-weight:600}
 canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:80}
 .loading{display:grid;place-items:center;min-height:60vh;font-weight:800;color:var(--muted)}
+/* redação */
+.legend{display:flex;flex-wrap:wrap;gap:6px;font-size:.78rem;font-weight:800}
+.legend span{padding:2px 8px;border-radius:99px;border:1.5px solid var(--line)}
+.essay{font-size:1.02rem;line-height:1.7;display:flex;flex-direction:column;gap:10px}
+.essay p{margin:0;text-indent:1.5em}
+.marks .h-rep,.legend .h-rep{background:color-mix(in srgb,var(--mat) 26%,transparent)}
+.marks .h-tese,.legend .h-tese{background:color-mix(in srgb,var(--hum) 45%,transparent)}
+.marks .h-arg,.legend .h-arg{background:color-mix(in srgb,var(--nat) 30%,transparent)}
+.marks .h-con,.legend .h-con{text-decoration:underline 3px var(--red);text-underline-offset:3px;font-weight:800}
+.marks .h-ag,.marks .h-ac,.marks .h-mo,.marks .h-de,.marks .h-fi,.legend .h-ag,.legend .h-ac,.legend .h-mo,.legend .h-de,.legend .h-fi{background:color-mix(in srgb,var(--lin) 24%,transparent);border-bottom:2px solid var(--lin)}
+.marks .h-ag::before{content:"agente ";font-size:.62em;font-weight:800;vertical-align:super;color:var(--lin)}
+.marks .h-ac::before{content:"ação ";font-size:.62em;font-weight:800;vertical-align:super;color:var(--lin)}
+.marks .h-mo::before{content:"meio ";font-size:.62em;font-weight:800;vertical-align:super;color:var(--lin)}
+.marks .h-de::before{content:"detalhe ";font-size:.62em;font-weight:800;vertical-align:super;color:var(--lin)}
+.marks .h-fi::before{content:"finalidade ";font-size:.62em;font-weight:800;vertical-align:super;color:var(--lin)}
+textarea{font:inherit;font-size:16px;font-weight:600;line-height:1.5;padding:12px;border:2.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:100%;resize:vertical}
+.wfield .pre{font-weight:700;color:var(--muted);font-size:.8rem}
+.checks{display:flex;flex-direction:column;gap:8px}
+.ck{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--soft)}
+.ck>span{flex:0 0 26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:900;border:2px solid var(--line);color:var(--on-accent)}
+.ck.ok>span{background:var(--ok)}.ck.no>span{background:var(--hum)}
+.ck b{display:block}.ck small{color:var(--muted);font-weight:700;font-size:.85rem}
+.step.full .dot{background:var(--hum);color:var(--on-accent)}
+.step .st{letter-spacing:1px}
+.s-on{color:var(--hum)}.s-off{color:var(--line);opacity:.18}
+.flash{text-align:center;align-items:center}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -259,6 +285,7 @@ canvas#confetti{position:fixed;inset:0;pointer-events:none;z-index:80}
 
 <script src="firebase-config.js"></script>
 <script src="content.js"></script>
+<script src="redacao.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
