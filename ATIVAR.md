@@ -58,6 +58,11 @@ npx firebase-tools deploy --only functions,firestore:rules
 2. Você entra no app com o seu e-mail e abre **jmarcicofast-cell.github.io/enem-turbo/admin.html**.
 3. Digite o e-mail de cada uma e quantos dias de Pro quer dar.
 
+## 6b. Cupons de desconto
+Na mesma página **admin.html** há a parte **Cupons de desconto**: escolha o código, se é % ou R$, validade, limite de usos e para quais planos vale.
+No app, a pessoa toca em **Tenho um cupom de desconto** na tela do Pro e vê o preço novo.
+Depois de atualizar o código do servidor, rode de novo o `deploy` (passo 4, só o último comando) para os cupons funcionarem.
+
 ## 7. Testar uma compra
 1. Com a chave de **teste** (sandbox), toque em **Seja Pro** no app, preencha nome e CPF e pague com Pix de teste.
 2. No painel do sandbox, abra a cobrança criada e use **Confirmar recebimento** para simular o pagamento.

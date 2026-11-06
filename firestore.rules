@@ -19,8 +19,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // registro de pagamentos: só o servidor
+    // registro de pagamentos, cobranças e cupons: só o servidor
     match /pagamentos/{id} {
+      allow read, write: if false;
+    }
+    match /cobrancas/{id} {
+      allow read, write: if false;
+    }
+    match /cupons/{codigo}/{doc=**} {
       allow read, write: if false;
     }
   }

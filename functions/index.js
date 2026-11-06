@@ -3,6 +3,8 @@
 // - criarPagamento: cria a cobrança no Asaas (Pix, cartão ou boleto)
 // - webhookAsaas: recebe o aviso do Asaas e libera (ou retira, em estorno) o Pro
 // - concederPro: a administradora libera Pro de cortesia (ex.: para as irmãs)
+// - salvarCupom / listarCupons: a administradora cadastra cupons de desconto
+// - validarCupom: o app confere o cupom e mostra os preços com desconto
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { defineSecret, defineString, defineInt } = require('firebase-functions/params');
@@ -179,12 +181,90 @@ function cpfValido(c) {
 }
 const amanha = () => new Date(Date.now() - 3 * 3600e3 + 864e5).toISOString().slice(0, 10);
 
+/* ======================= cupons de desconto ======================= */
+// cupons/{CODIGO} = { tipo:'pct'|'valor', valor, ativo, validade:Timestamp|null, limite (0 = sem limite), usos, planos:[] (vazio = todos), umPorPessoa }
+const normCupom = c => String(c || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30);
+const r2 = v => Math.round(v * 100) / 100;
+const PRECO_MIN = 5; // o Asaas não aceita cobrança menor que R$ 5
+function precoComCupom(plano, cp) {
+  const d = cp.tipo === 'valor' ? Number(cp.valor) || 0 : plano.preco * Math.min(100, Math.max(0, Number(cp.valor) || 0)) / 100;
+  let v = r2(Math.max(0, plano.preco - d));
+  if (v > 0 && v < PRECO_MIN) v = PRECO_MIN;
+  return v;
+}
+// confere o cupom para esta pessoa; devolve o cupom ou lança erro com o motivo
+async function lerCupom(codigo, uid, planoId) {
+  const c = normCupom(codigo); if (!c) return null;
+  const snap = await db.collection('cupons').doc(c).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Cupom não encontrado. Confira as letras.');
+  const cp = { codigo: c, ...snap.data() };
+  if (!cp.ativo) throw new HttpsError('failed-precondition', 'Esse cupom não está mais ativo.');
+  if (cp.validade && cp.validade.toMillis() < Date.now()) throw new HttpsError('failed-precondition', 'Esse cupom já venceu.');
+  if (cp.limite > 0 && (cp.usos || 0) >= cp.limite) throw new HttpsError('failed-precondition', 'Esse cupom já atingiu o limite de usos.');
+  if (planoId && cp.planos && cp.planos.length && !cp.planos.includes(planoId)) throw new HttpsError('failed-precondition', 'Esse cupom não vale para esse plano.');
+  if (cp.umPorPessoa !== false && uid) { const u = await db.collection('cupons').doc(c).collection('usados').doc(uid).get(); if (u.exists) throw new HttpsError('failed-precondition', 'Você já usou esse cupom.') }
+  return cp;
+}
+async function registrarUsoCupom(codigo, uid, extra) {
+  if (!codigo) return;
+  const ref = db.collection('cupons').doc(codigo);
+  await db.runTransaction(async tx => {
+    const u = ref.collection('usados').doc(uid), s = await tx.get(u); if (s.exists) return;
+    tx.set(u, { em: admin.firestore.FieldValue.serverTimestamp(), ...extra });
+    tx.set(ref, { usos: admin.firestore.FieldValue.increment(1) }, { merge: true });
+  });
+}
+
+exports.validarCupom = onCall(async req => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para usar um cupom.');
+  const cp = await lerCupom(req.data && req.data.cupom, req.auth.uid);
+  if (!cp) throw new HttpsError('invalid-argument', 'Digite o cupom.');
+  const precos = {};
+  Object.entries(PLANOS).forEach(([id, pl]) => { if (!cp.planos || !cp.planos.length || cp.planos.includes(id)) precos[id] = precoComCupom(pl, cp) });
+  return { codigo: cp.codigo, tipo: cp.tipo, valor: cp.valor, precos };
+});
+
+function exigirAdmin(req) {
+  const admins = String(par(ADMIN_EMAILS, '')).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const email = req.auth && req.auth.token.email && req.auth.token.email.toLowerCase();
+  if (!email || !admins.includes(email)) throw new HttpsError('permission-denied', 'Só a administradora pode fazer isso.');
+  return email;
+}
+exports.salvarCupom = onCall(async req => {
+  const email = exigirAdmin(req), d = req.data || {};
+  const codigo = normCupom(d.codigo); if (codigo.length < 3) throw new HttpsError('invalid-argument', 'O código precisa de pelo menos 3 letras ou números.');
+  const ref = db.collection('cupons').doc(codigo);
+  if (d.apagar) { await ref.delete(); return { ok: true } }
+  if (d.soAtivo !== undefined) { await ref.set({ ativo: !!d.soAtivo }, { merge: true }); return { ok: true } }
+  const tipo = d.tipo === 'valor' ? 'valor' : 'pct', valor = Number(d.valor) || 0;
+  if (valor <= 0 || (tipo === 'pct' && valor > 100)) throw new HttpsError('invalid-argument', tipo === 'pct' ? 'O desconto em % vai de 1 a 100.' : 'Digite o valor do desconto em reais.');
+  const planos = (Array.isArray(d.planos) ? d.planos : []).filter(p => PLANOS[p]);
+  const validade = d.validade ? admin.firestore.Timestamp.fromMillis(new Date(d.validade + 'T23:59:59-03:00').getTime()) : null;
+  await ref.set({ tipo, valor, ativo: d.ativo !== false, validade, limite: Math.max(0, parseInt(d.limite) || 0), planos, umPorPessoa: d.umPorPessoa !== false, por: email, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true, codigo };
+});
+exports.listarCupons = onCall(async req => {
+  exigirAdmin(req);
+  const q = await db.collection('cupons').get();
+  return { cupons: q.docs.map(x => { const c = x.data(); return { codigo: x.id, tipo: c.tipo, valor: c.valor, ativo: !!c.ativo, validade: c.validade ? c.validade.toMillis() : null, limite: c.limite || 0, usos: c.usos || 0, planos: c.planos || [], umPorPessoa: c.umPorPessoa !== false } }).sort((a, b) => a.codigo.localeCompare(b.codigo)) };
+});
+
 exports.criarPagamento = onCall({ secrets: [ASAAS_API_KEY] }, async req => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta para assinar.');
   const planoId = req.data && req.data.plano, plano = PLANOS[planoId];
   if (!plano) throw new HttpsError('invalid-argument', 'Plano inválido.');
   const uid = req.auth.uid, base = par(APP_URL, 'https://jmarcicofast-cell.github.io/enem-turbo/');
   const ref = db.collection('plans').doc(uid), snap = await ref.get(), p = snap.exists ? snap.data() : {};
+
+  // cupom de desconto (opcional)
+  const cp = await lerCupom(req.data && req.data.cupom, uid, planoId);
+  const valor = cp ? precoComCupom(plano, cp) : plano.preco;
+  if (cp && valor <= 0) {
+    // 100% de desconto: libera direto, sem cobrança
+    await registrarUsoCupom(cp.codigo, uid, { plano: planoId, valor: 0 });
+    await liberarPro(uid, plano.dias, 'cupom:' + cp.codigo);
+    return { gratis: true, dias: plano.dias };
+  }
 
   // cliente no Asaas (criado uma vez; o CPF vai direto para o Asaas e não fica guardado no app)
   let customer = p.asaasCliente;
@@ -199,8 +279,8 @@ exports.criarPagamento = onCall({ secrets: [ASAAS_API_KEY] }, async req => {
   }
 
   const cobranca = {
-    customer, billingType: 'UNDEFINED', value: plano.preco, dueDate: amanha(),
-    description: plano.titulo, externalReference: `${uid}|${planoId}`,
+    customer, billingType: 'UNDEFINED', value: valor, dueDate: amanha(),
+    description: plano.titulo + (cp ? ' · cupom ' + cp.codigo : ''), externalReference: `${uid}|${planoId}|${cp ? cp.codigo : ''}`,
     callback: { successUrl: base + '?pago=ok', autoRedirect: true }
   };
   let r = await asaas('POST', '/payments', cobranca);
@@ -209,6 +289,8 @@ exports.criarPagamento = onCall({ secrets: [ASAAS_API_KEY] }, async req => {
     delete cobranca.callback; r = await asaas('POST', '/payments', cobranca);
   }
   if (!r.ok || !r.j.invoiceUrl) { console.error('asaas cobrança', r.status, JSON.stringify(r.j)); throw new HttpsError('unavailable', 'Não consegui abrir o pagamento agora. Tente de novo.') }
+  // guarda o valor esperado para o webhook conferir (com cupom, é menor que o preço cheio)
+  await db.collection('cobrancas').doc('asaas_' + r.j.id).set({ uid, plano: planoId, valor, cupom: cp ? cp.codigo : '', em: admin.firestore.FieldValue.serverTimestamp() });
   return { url: r.j.invoiceUrl, id: r.j.id };
 });
 
@@ -241,14 +323,16 @@ exports.webhookAsaas = onRequest({ secrets: [ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN]
     // confirma direto na API do Asaas (não confia só no corpo do aviso)
     const g = await asaas('GET', '/payments/' + encodeURIComponent(pay.id));
     if (!g.ok) { console.error('asaas get', g.status, JSON.stringify(g.j)); res.status(200).send('erro consulta'); return }
-    const pg = g.j, [uid, planoId] = String(pg.externalReference || '').split('|'), plano = PLANOS[planoId];
+    const pg = g.j, [uid, planoId, cupom] = String(pg.externalReference || '').split('|'), plano = PLANOS[planoId];
     if (!uid || !plano) { res.status(200).send('ref'); return }
     const reg = db.collection('pagamentos').doc('asaas_' + pg.id);
     if (pagos.includes(evento)) {
-      if (!['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(pg.status) || Number(pg.value) + 0.01 < plano.preco) { res.status(200).send('status ' + pg.status); return }
+      const cob = await db.collection('cobrancas').doc('asaas_' + pg.id).get();
+      const esperado = cob.exists && cob.data().uid === uid ? cob.data().valor : plano.preco;
+      if (!['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(pg.status) || Number(pg.value) + 0.01 < esperado) { res.status(200).send('status ' + pg.status); return }
       // CONFIRMED e RECEIVED chegam para o mesmo pagamento: libera uma vez só
       const novo = await db.runTransaction(async tx => { const s = await tx.get(reg); if (s.exists) return false; tx.set(reg, { uid, plano: planoId, valor: pg.value, metodo: pg.billingType || '', status: pg.status, em: admin.firestore.FieldValue.serverTimestamp() }); return true });
-      if (novo) await liberarPro(uid, plano.dias, 'asaas:' + pg.id);
+      if (novo) { await liberarPro(uid, plano.dias, 'asaas:' + pg.id); if (cupom) await registrarUsoCupom(cupom, uid, { plano: planoId, valor: pg.value, pagamento: pg.id }) }
     } else {
       const s = await reg.get();
       if (s.exists && !s.data().estornado) { await reg.set({ estornado: true }, { merge: true }); await retirarPro(uid, plano.dias, 'estorno:' + pg.id) }
@@ -259,9 +343,7 @@ exports.webhookAsaas = onRequest({ secrets: [ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN]
 
 /* ======================= cortesia (administradora) ======================= */
 exports.concederPro = onCall(async req => {
-  const admins = String(par(ADMIN_EMAILS, '')).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  const email = req.auth && req.auth.token.email && req.auth.token.email.toLowerCase();
-  if (!email || !admins.includes(email)) throw new HttpsError('permission-denied', 'Só a administradora pode fazer isso.');
+  const email = exigirAdmin(req);
   const alvo = String((req.data && req.data.email) || '').trim().toLowerCase(), dias = Math.min(3650, Math.max(1, Number(req.data && req.data.dias) || 30));
   let u; try { u = await admin.auth().getUserByEmail(alvo) } catch (e) { throw new HttpsError('not-found', 'Não achei conta com esse e-mail. A pessoa precisa criar a conta no app primeiro.') }
   await liberarPro(u.uid, dias, 'cortesia:' + email);

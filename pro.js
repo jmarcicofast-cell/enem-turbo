@@ -61,7 +61,9 @@ function cpfValido(c) {
 const maskCpf = v => v.replace(/\D/g, '').slice(0, 11).replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 function openPro(motivo) {
   const sh = $('#pro-sheet'), pro = isPro();
-  let sel = 'anual', cpf = '', nome = (ET.S && ET.S.name) || '';
+  let sel = 'anual', cpf = '', nome = (ET.S && ET.S.name) || '', cupom = null, cupomTxt = '', cupomErr = '', cupomAbre = false;
+  const precoDe = p => cupom && cupom.precos[p.id] !== undefined ? cupom.precos[p.id] : p.preco;
+  const descCupom = () => cupom.tipo === 'valor' ? brl(cupom.valor) + ' de desconto' : cupom.valor + '% de desconto';
   const temCliente = () => !!(ET.PLAN && ET.PLAN.asaasCliente);
   const draw = () => {
     sh.querySelector('.sheet').innerHTML = `
@@ -75,31 +77,53 @@ function openPro(motivo) {
         <li>🗓️ <b>Cronograma completo</b> até o dia da prova, montado para o seu curso</li>
         <li>📊 <b>Painel de desempenho</b> com pontos fracos e evolução</li>
       </ul>
-      <div class="plans">${PLANOS.map(p => `<button class="plan ${p.id === sel ? 'sel' : ''} ${p.top ? 'top' : ''}" data-p="${p.id}">${p.top ? '<span class="ribbon">Mais escolhido</span>' : ''}<b>${p.nome}</b><span class="price">${brl(p.preco)}</span><small>${p.sub}</small></button>`).join('')}</div>
+      <div class="plans">${PLANOS.map(p => { const v = precoDe(p), off = v < p.preco; return `<button class="plan ${p.id === sel ? 'sel' : ''} ${p.top ? 'top' : ''}" data-p="${p.id}">${p.top ? '<span class="ribbon">Mais escolhido</span>' : ''}<b>${p.nome}</b><span class="price">${off ? `<s class="de">${brl(p.preco)}</s> ` : ''}${v === 0 ? 'Grátis' : brl(v)}</span><small>${off ? 'com o cupom ' + ET.esc(cupom.codigo) : p.sub}</small></button>` }).join('')}</div>
+      <div class="cupom">${cupom
+        ? `<p class="feedback ok" style="margin:0">🎟️ Cupom <b>${ET.esc(cupom.codigo)}</b> aplicado: ${descCupom()}. <button class="link" id="cp-tirar">Tirar</button></p>`
+        : cupomAbre ? `<div class="cp-row"><input type="text" id="cp-in" placeholder="Código do cupom" autocapitalize="characters" autocomplete="off" value="${ET.esc(cupomTxt)}" aria-label="Código do cupom"><button class="btn" id="cp-ok">Aplicar</button></div>${cupomErr ? `<p class="err" style="margin:0">${ET.esc(cupomErr)}</p>` : ''}`
+        : `<button class="link" id="cp-abre">Tenho um cupom de desconto</button>`}</div>
       ${!ET.CLOUD ? '<p class="err">Para assinar, o app precisa estar com login por e-mail ativado.</p>' : ''}
       ${ET.CLOUD && !temCliente() ? `<div class="payer"><span class="lbl">Dados de quem vai pagar</span>
         <label class="f" for="pay-nome">Nome completo<input type="text" id="pay-nome" autocomplete="name" value="${ET.esc(nome)}"></label>
         <label class="f" for="pay-cpf">CPF<input type="text" id="pay-cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" value="${ET.esc(cpf)}"></label>
         <small class="muted">O pagamento é processado pelo Asaas, que exige CPF. O app não guarda o seu CPF.</small></div>` : ''}
       <p class="err" id="pay-err" hidden></p>
-      <button class="btn primary big" id="pay" ${!ET.CLOUD ? 'disabled' : ''}>Pagar com Pix, cartão ou boleto</button>
+      <button class="btn primary big" id="pay" ${!ET.CLOUD ? 'disabled' : ''}>${cupom && cupom.precos[sel] === 0 ? 'Ativar meu Pro grátis' : 'Pagar ' + brl(precoDe(PLANOS.find(p => p.id === sel))) + ' com Pix, cartão ou boleto'}</button>
       <p class="muted" style="margin:0;font-size:.82rem;text-align:center">Pagamento único pelo Asaas, sem renovação automática. Pix e cartão liberam o Pro na hora; boleto, quando for compensado.</p>`;
     sh.querySelectorAll('.plan').forEach(b => b.onclick = () => { sel = b.dataset.p; draw() });
+    if ($('#cp-abre')) $('#cp-abre').onclick = () => { cupomAbre = true; draw(); $('#cp-in').focus() };
+    if ($('#cp-tirar')) $('#cp-tirar').onclick = () => { cupom = null; cupomAbre = true; draw() };
+    if ($('#cp-ok')) {
+      const ap = async () => {
+        cupomTxt = $('#cp-in').value.trim(); if (!cupomTxt) return;
+        const b = $('#cp-ok'); b.disabled = true; b.textContent = '…';
+        try {
+          const r = await ET.fb.fn.httpsCallable('validarCupom')({ cupom: cupomTxt });
+          cupom = r.data; cupomErr = '';
+          if (cupom.precos[sel] === undefined) sel = Object.keys(cupom.precos)[0] || sel;
+        } catch (e) { cupom = null; cupomErr = erroFn(e, 'Não consegui conferir o cupom.') }
+        draw();
+      };
+      $('#cp-ok').onclick = ap; $('#cp-in').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); ap() } };
+    }
     $('#pro-x').onclick = () => sh.hidden = true;
     const ci = $('#pay-cpf'), ni = $('#pay-nome');
     if (ci) ci.oninput = () => { ci.value = maskCpf(ci.value); cpf = ci.value };
     if (ni) ni.oninput = () => { nome = ni.value };
     $('#pay').onclick = async () => {
       const btn = $('#pay'), er = $('#pay-err'); er.hidden = true;
-      if (!temCliente()) {
+      const gratis = cupom && cupom.precos[sel] === 0;
+      if (cupom && cupom.precos[sel] === undefined) { er.textContent = 'Esse cupom não vale para esse plano.'; er.hidden = false; return }
+      if (!temCliente() && !gratis) {
         if (nome.trim().split(/\s+/).length < 2) { er.textContent = 'Escreva o nome completo de quem vai pagar.'; er.hidden = false; return }
         if (!cpfValido(cpf)) { er.textContent = 'CPF inválido. Confira os números.'; er.hidden = false; return }
       }
       btn.disabled = true; btn.textContent = 'Abrindo o pagamento…';
       try {
-        const r = await ET.fb.fn.httpsCallable('criarPagamento')({ plano: sel, cpf: cpf.replace(/\D/g, ''), nome: nome.trim() });
+        const r = await ET.fb.fn.httpsCallable('criarPagamento')({ plano: sel, cpf: cpf.replace(/\D/g, ''), nome: nome.trim(), cupom: cupom ? cupom.codigo : '' });
+        if (r.data.gratis) { sh.hidden = true; ET.toast('Pronto! Seu Pro está ativo. 🎉'); return }
         location.href = r.data.url;
-      } catch (e) { btn.disabled = false; btn.textContent = 'Pagar com Pix, cartão ou boleto'; er.textContent = erroFn(e, 'Não consegui abrir o pagamento.'); er.hidden = false }
+      } catch (e) { btn.disabled = false; btn.textContent = 'Tentar de novo'; er.textContent = erroFn(e, 'Não consegui abrir o pagamento.'); er.hidden = false }
     };
   };
   draw(); sh.hidden = false;
